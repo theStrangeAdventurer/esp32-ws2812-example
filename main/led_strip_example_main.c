@@ -194,33 +194,42 @@ void led_strip_diagonal_flow_task(void *pvParameters) {
   led_effect_params_t *params = (led_effect_params_t *)pvParameters;
   uint32_t red, green, blue;
 
-  // Цветовая палитра: чистые комплементарные цвета
-  const uint16_t colors[3] = {280, 30, 240}; // фиолетовый, оранжевый, синий
-  const uint8_t saturation = 90;
+  // Цветовая палитра: фиолетовый, оранжевый (без синего)
+  const uint16_t colors[2] = {280, 20}; // фиолетовый, более оранжевый желтый
+  const uint8_t saturation = 100;
+  const uint8_t max_brightness = 80;
 
   float phase = 0;
-  const float speed = 0.02f; // Немного медленнее для четких переходов
+  const float speed = 0.05f;
+
+  // Состояние для отслеживания смены цветов
+  static uint8_t current_color_group[2] = {0, 1}; // цвета для каждой группы
+  static bool fade_detected[2] = {false, false};  // флаги обнаружения угасания
 
   while (params->running) {
     for (int j = 0; j < EXAMPLE_LED_NUMBERS; j++) {
-      // Диагональные пары синхронны (0,3 и 1,2)
-      float led_phase = phase + ((j % 2) * M_PI);
+      int group = (j == 0 || j == 2) ? 0 : 1;
+      float led_phase = phase + (group * M_PI);
 
-      // Плавная волна от 0 до 1
-      float wave = (sin(led_phase) + 1.0f) / 2.0f;
+      // Плавная волна дыхания от 0 до 1 с более выраженным угасанием
+      float breath_wave = (sin(led_phase) + 1.0f) / 2.0f;
+      breath_wave = breath_wave * breath_wave;
 
-      // Выбираем цвет резко, без промежуточных оттенков
-      uint16_t current_hue;
-      if (wave < 0.33f) {
-        current_hue = colors[0]; // Чистый фиолетовый
-      } else if (wave < 0.66f) {
-        current_hue = colors[1]; // Чистый оранжевый
-      } else {
-        current_hue = colors[2]; // Чистый синий
+      uint8_t brightness = (uint8_t)(max_brightness * breath_wave);
+      if (brightness < 5)
+        brightness = 0;
+
+      // Детекция полного угасания для смены цвета
+      if (brightness == 0 && !fade_detected[group]) {
+        // Момент полного угасания - меняем цвет группы
+        current_color_group[group] = 1 - current_color_group[group];
+        fade_detected[group] = true;
+      } else if (brightness > 10) {
+        // Сброс флага когда яркость поднимается
+        fade_detected[group] = false;
       }
 
-      // Яркость тоже меняется волной (эффект "дыхания")
-      uint8_t brightness = 50 + (uint8_t)(45 * wave);
+      uint16_t current_hue = colors[current_color_group[group]];
 
       led_strip_hsv2rgb(current_hue, saturation, brightness, &red, &green,
                         &blue);
@@ -236,10 +245,11 @@ void led_strip_diagonal_flow_task(void *pvParameters) {
     ESP_ERROR_CHECK(rmt_tx_wait_all_done(params->led_chan, pdMS_TO_TICKS(100)));
 
     phase += speed;
-    if (phase > M_PI * 2)
-      phase -= M_PI * 2;
+    if (phase >= M_PI * 4) {
+      phase = 0;
+    }
 
-    vTaskDelay(pdMS_TO_TICKS(60)); // ~16 FPS
+    vTaskDelay(pdMS_TO_TICKS(40));
   }
   vTaskDelete(NULL);
 }
@@ -417,7 +427,7 @@ void app_main(void) {
                                   .running = true,
                                   .task_handle = NULL};
 
-  xTaskCreate(led_strip_fire_task, "led_effect", 4096, params, 5,
+  xTaskCreate(led_strip_diagonal_flow_task, "led_effect", 4096, params, 5,
               &params->task_handle);
 
   // Выберите нужный эффект, раскомментировав одну из строк:
