@@ -9,6 +9,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "led_strip_encoder.h"
+#include <math.h>
 #include <string.h>
 
 #define RMT_LED_STRIP_RESOLUTION_HZ                                            \
@@ -95,8 +96,8 @@ void led_strip_rainbow_task(void *pvParameters) {
       hue = (j * 360 / EXAMPLE_LED_NUMBERS + start_rgb) % 360;
       led_strip_hsv2rgb(hue, 100, 100, &red, &green, &blue);
       led_strip_pixels[j * 3 + 0] = green;
-      led_strip_pixels[j * 3 + 1] = blue;
-      led_strip_pixels[j * 3 + 2] = red;
+      led_strip_pixels[j * 3 + 1] = red;
+      led_strip_pixels[j * 3 + 2] = blue;
     }
     ESP_ERROR_CHECK(rmt_transmit(params->led_chan, params->led_encoder,
                                  led_strip_pixels, sizeof(led_strip_pixels),
@@ -189,6 +190,197 @@ void led_strip_candle_task(void *pvParameters) {
   vTaskDelete(NULL);
 }
 
+void led_strip_diagonal_flow_task(void *pvParameters) {
+  led_effect_params_t *params = (led_effect_params_t *)pvParameters;
+  uint32_t red, green, blue;
+
+  // Цветовая палитра: чистые комплементарные цвета
+  const uint16_t colors[3] = {280, 30, 240}; // фиолетовый, оранжевый, синий
+  const uint8_t saturation = 90;
+
+  float phase = 0;
+  const float speed = 0.02f; // Немного медленнее для четких переходов
+
+  while (params->running) {
+    for (int j = 0; j < EXAMPLE_LED_NUMBERS; j++) {
+      // Диагональные пары синхронны (0,3 и 1,2)
+      float led_phase = phase + ((j % 2) * M_PI);
+
+      // Плавная волна от 0 до 1
+      float wave = (sin(led_phase) + 1.0f) / 2.0f;
+
+      // Выбираем цвет резко, без промежуточных оттенков
+      uint16_t current_hue;
+      if (wave < 0.33f) {
+        current_hue = colors[0]; // Чистый фиолетовый
+      } else if (wave < 0.66f) {
+        current_hue = colors[1]; // Чистый оранжевый
+      } else {
+        current_hue = colors[2]; // Чистый синий
+      }
+
+      // Яркость тоже меняется волной (эффект "дыхания")
+      uint8_t brightness = 50 + (uint8_t)(45 * wave);
+
+      led_strip_hsv2rgb(current_hue, saturation, brightness, &red, &green,
+                        &blue);
+
+      led_strip_pixels[j * 3 + 0] = green;
+      led_strip_pixels[j * 3 + 1] = red;
+      led_strip_pixels[j * 3 + 2] = blue;
+    }
+
+    ESP_ERROR_CHECK(rmt_transmit(params->led_chan, params->led_encoder,
+                                 led_strip_pixels, sizeof(led_strip_pixels),
+                                 &params->tx_config));
+    ESP_ERROR_CHECK(rmt_tx_wait_all_done(params->led_chan, pdMS_TO_TICKS(100)));
+
+    phase += speed;
+    if (phase > M_PI * 2)
+      phase -= M_PI * 2;
+
+    vTaskDelay(pdMS_TO_TICKS(60)); // ~16 FPS
+  }
+  vTaskDelete(NULL);
+}
+
+void led_strip_fire_task(void *pvParameters) {
+  led_effect_params_t *params = (led_effect_params_t *)pvParameters;
+  uint32_t red, green, blue;
+
+  // Каждый светодиод - отдельный "язык пламени"
+  float flame_phase[4];
+  float flame_speed[4];
+  uint32_t next_flicker[4];
+
+  // Инициализация каждого "языка"
+  for (int i = 0; i < 4; i++) {
+    flame_phase[i] = (esp_random() % 628) / 100.0f;
+    flame_speed[i] = 0.1f + (esp_random() % 20) / 100.0f;
+    next_flicker[i] = esp_random() % 50;
+  }
+
+  while (params->running) {
+    for (int j = 0; j < 4; j++) {
+      // Базовое "дыхание" костра
+      float base_flame = (sin(flame_phase[j]) + 1.0f) / 2.0f; // 0-1
+
+      // Случайные резкие вспышки (более ограниченные)
+      float intensity = base_flame * 0.5f + 0.3f; // 0.3-0.8 базовый диапазон
+
+      if (next_flicker[j] == 0) {
+        // Более умеренные вспышки
+        intensity += (esp_random() % 20) / 100.0f; // +0-0.2 вместо 0.3
+        next_flicker[j] = 10 + esp_random() % 40;
+      } else {
+        next_flicker[j]--;
+      }
+
+      // Иногда почти гаснем
+      if (esp_random() % 200 == 0) {
+        intensity *= 0.2f;
+      }
+
+      // Строго ограничиваем интенсивность
+      if (intensity > 0.9f)
+        intensity = 0.9f; // Не даем достигать 1.0
+      if (intensity < 0.1f)
+        intensity = 0.1f;
+
+      // Улучшенная огненная палитра без белого и зеленого
+      if (intensity < 0.4f) {
+        // Темно-красный
+        red = 80 + 120 * (intensity / 0.4f); // 80-200
+        green = 0;
+        blue = 0;
+      } else if (intensity < 0.7f) {
+        // Красный → оранжевый (ограниченный green)
+        red = 200 + 55 * ((intensity - 0.4f) / 0.3f); // 200-255
+        green = 60 * ((intensity - 0.4f) / 0.3f);     // 0-60 (не 165!)
+        blue = 0;
+      } else {
+        // Оранжевый → желтоватый (без белого)
+        red = 255;
+        green = 60 + 40 * ((intensity - 0.7f) / 0.3f); // 60-100 (не 255!)
+        blue = 0; // Никакого синего компонента
+      }
+
+      led_strip_pixels[j * 3 + 0] = green;
+      led_strip_pixels[j * 3 + 1] = red;
+      led_strip_pixels[j * 3 + 2] = blue;
+
+      // Обновляем фазу дыхания
+      flame_phase[j] += flame_speed[j];
+      if (flame_phase[j] > M_PI * 2)
+        flame_phase[j] -= M_PI * 2;
+    }
+
+    ESP_ERROR_CHECK(rmt_transmit(params->led_chan, params->led_encoder,
+                                 led_strip_pixels, sizeof(led_strip_pixels),
+                                 &params->tx_config));
+    ESP_ERROR_CHECK(rmt_tx_wait_all_done(params->led_chan, pdMS_TO_TICKS(100)));
+    vTaskDelay(pdMS_TO_TICKS(60)); // ~16 FPS
+  }
+  vTaskDelete(NULL);
+}
+
+void led_strip_soft_candle_task(void *pvParameters) {
+  led_effect_params_t *params = (led_effect_params_t *)pvParameters;
+  uint32_t red, green, blue;
+
+  // Мягкое дыхание свечей
+  float breathing_phase[EXAMPLE_LED_NUMBERS];
+  float breathing_speed[EXAMPLE_LED_NUMBERS];
+  uint16_t base_hue[EXAMPLE_LED_NUMBERS];
+  uint8_t base_saturation[EXAMPLE_LED_NUMBERS];
+
+  // Инициализация каждой "свечи"
+  for (int i = 0; i < EXAMPLE_LED_NUMBERS; i++) {
+    breathing_phase[i] = (esp_random() % 628) / 100.0f;         // 0-2π
+    breathing_speed[i] = 0.02f + (esp_random() % 15) / 1000.0f; // 0.02-0.035
+    base_hue[i] = 15 + (esp_random() % 20);        // 15-34° (оранжево-красный)
+    base_saturation[i] = 80 + (esp_random() % 20); // 80-99%
+  }
+
+  while (params->running) {
+    for (int j = 0; j < EXAMPLE_LED_NUMBERS; j++) {
+      // Мягкое дыхание вместо резких мерцаний
+      float breathing = (sin(breathing_phase[j]) + 1.0f) / 2.0f; // 0-1
+
+      // Добавляем небольшие случайные вариации для реализма
+      float flicker = 0.95f + (esp_random() % 10) / 100.0f; // 0.95-1.05
+      breathing *= flicker;
+      if (breathing > 1.0f)
+        breathing = 1.0f;
+
+      // Плавно меняющаяся яркость в диапазоне свечи
+      uint8_t brightness = 40 + (uint8_t)(50 * breathing); // 40-90%
+
+      // Очень медленные изменения оттенка
+      uint16_t current_hue =
+          base_hue[j] + (uint8_t)(5 * sin(breathing_phase[j] * 0.1f));
+
+      led_strip_hsv2rgb(current_hue, base_saturation[j], brightness, &red,
+                        &green, &blue);
+
+      led_strip_pixels[j * 3 + 0] = green;
+      led_strip_pixels[j * 3 + 1] = red;
+      led_strip_pixels[j * 3 + 2] = blue;
+
+      // Обновляем фазу дыхания
+      breathing_phase[j] += breathing_speed[j];
+      if (breathing_phase[j] > M_PI * 2)
+        breathing_phase[j] -= M_PI * 2;
+    }
+    ESP_ERROR_CHECK(rmt_transmit(params->led_chan, params->led_encoder,
+                                 led_strip_pixels, sizeof(led_strip_pixels),
+                                 &params->tx_config));
+    ESP_ERROR_CHECK(rmt_tx_wait_all_done(params->led_chan, pdMS_TO_TICKS(100)));
+    vTaskDelay(pdMS_TO_TICKS(80)); // ~12 FPS для спокойного эффекта
+  }
+  vTaskDelete(NULL);
+}
+
 void app_main(void) {
   ESP_LOGI(TAG, "Create RMT TX channel");
   rmt_channel_handle_t led_chan = NULL;
@@ -213,7 +405,7 @@ void app_main(void) {
   ESP_LOGI(TAG, "Enable RMT TX channel");
   ESP_ERROR_CHECK(rmt_enable(led_chan));
 
-  ESP_LOGI(TAG, "Start LED rainbow chase");
+  ESP_LOGI(TAG, "Start LED effects");
   rmt_transmit_config_t tx_config = {
       .loop_count = 0, // no transfer loop
   };
@@ -225,8 +417,18 @@ void app_main(void) {
                                   .running = true,
                                   .task_handle = NULL};
 
-  xTaskCreate(led_strip_candle_task, "led_effect", 4096, params, 5,
+  xTaskCreate(led_strip_fire_task, "led_effect", 4096, params, 5,
               &params->task_handle);
+
+  // Выберите нужный эффект, раскомментировав одну из строк:
+  // xTaskCreate(led_strip_fire_task, "led_effect", 4096, params, 5,
+  //             &params->task_handle);
+
+  // xTaskCreate(led_strip_soft_candle_task, "led_effect", 4096, params, 5,
+  //             &params->task_handle);
+
+  // xTaskCreate(led_strip_candle_task, "led_effect", 4096, params, 5,
+  //             &params->task_handle);
 
   // xTaskCreate(led_strip_rainbow_task, "led_effect", 4096, params, 5,
   //             &params->task_handle);
