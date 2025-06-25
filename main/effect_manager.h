@@ -126,6 +126,31 @@ esp_err_t effect_manager_set_effect_by_name(effect_manager_t *manager,
  */
 void effect_manager_cleanup(effect_manager_t *manager);
 
+/**
+ * @brief Set brightness for effects
+ * @param manager Pointer to effect manager
+ * @param brightness Brightness value (1-255)
+ * @return ESP_OK on success
+ */
+esp_err_t effect_manager_set_brightness(effect_manager_t *manager,
+                                        uint8_t brightness);
+
+/**
+ * @brief Get current brightness
+ * @param manager Pointer to effect manager
+ * @return Current brightness value (0 if error)
+ */
+uint8_t effect_manager_get_brightness(effect_manager_t *manager);
+
+/**
+ * @brief Adjust brightness by delta value
+ * @param manager Pointer to effect manager
+ * @param delta Change in brightness (-255 to +255)
+ * @return ESP_OK on success
+ */
+esp_err_t effect_manager_adjust_brightness(effect_manager_t *manager,
+                                           int8_t delta);
+
 #ifdef __cplusplus
 }
 #endif

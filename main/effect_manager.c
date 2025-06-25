@@ -69,7 +69,13 @@ esp_err_t effect_manager_init(effect_manager_t *manager,
   manager->button_task_handle = NULL;
   manager->button_params = NULL;
 
-  ESP_LOGI(TAG, "Effect manager initialized with %d effects", EFFECT_COUNT);
+  // Установить яркость по умолчанию, если не задана
+  if (manager->params->brightness == 0) {
+    manager->params->brightness = 128; // 50% яркости по умолчанию
+  }
+
+  ESP_LOGI(TAG, "Effect manager initialized with %d effects, brightness: %d",
+           EFFECT_COUNT, manager->params->brightness);
 
   // Запустить первый эффект
   return effect_manager_switch_to(manager, 0);
@@ -233,6 +239,48 @@ esp_err_t effect_manager_get_status(effect_manager_t *manager,
   return ESP_OK;
 }
 
+esp_err_t effect_manager_set_brightness(effect_manager_t *manager,
+                                        uint8_t brightness) {
+  if (!manager || !manager->params) {
+    ESP_LOGE(TAG, "Invalid manager or params");
+    return ESP_ERR_INVALID_ARG;
+  }
+
+  // Ограничиваем яркость от 1 до 255 (0 может вызвать проблемы)
+  if (brightness == 0) {
+    brightness = 1;
+  }
+
+  manager->params->brightness = brightness;
+  ESP_LOGI(TAG, "Brightness sПроверь еще раз все ли ты обновил et to %d",
+           brightness);
+  return ESP_OK;
+}
+
+uint8_t effect_manager_get_brightness(effect_manager_t *manager) {
+  if (!manager || !manager->params) {
+    return 0;
+  }
+  return manager->params->brightness;
+}
+
+esp_err_t effect_manager_adjust_brightness(effect_manager_t *manager,
+                                           int8_t delta) {
+  if (!manager || !manager->params) {
+    return ESP_ERR_INVALID_ARG;
+  }
+
+  int new_brightness = (int)manager->params->brightness + delta;
+
+  // Ограничиваем диапазон
+  if (new_brightness < 1) {
+    new_brightness = 1;
+  } else if (new_brightness > 255) {
+    new_brightness = 255;
+  }
+
+  return effect_manager_set_brightness(manager, (uint8_t)new_brightness);
+}
 esp_err_t effect_manager_set_effect_by_name(effect_manager_t *manager,
                                             const char *name) {
   if (!manager || !name) {

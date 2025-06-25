@@ -69,6 +69,12 @@ void led_strip_rainbow_task(void *pvParameters) {
       // Modified calculation to include moving offset
       hue = (j * 360 / EXAMPLE_LED_NUMBERS + start_rgb) % 360;
       led_strip_hsv2rgb(hue, 100, 100, &red, &green, &blue);
+
+      // Применяем яркость из параметров
+      red = (red * params->brightness) / 255;
+      green = (green * params->brightness) / 255;
+      blue = (blue * params->brightness) / 255;
+
       params->led_strip_pixels[j * 3 + 0] = green;
       params->led_strip_pixels[j * 3 + 1] = red;
       params->led_strip_pixels[j * 3 + 2] = blue;
@@ -150,6 +156,11 @@ void led_strip_candle_task(void *pvParameters) {
       led_strip_hsv2rgb(led_hue[j], led_saturation[j], led_brightness[j], &red,
                         &green, &blue);
 
+      // Применяем общую яркость из параметров
+      red = (red * params->brightness) / 255;
+      green = (green * params->brightness) / 255;
+      blue = (blue * params->brightness) / 255;
+
       // Сохраняем оригинальный порядок цветов GRB
       params->led_strip_pixels[j * 3 + 0] = green;
       params->led_strip_pixels[j * 3 + 1] = red;
@@ -209,6 +220,11 @@ void led_strip_diagonal_flow_task(void *pvParameters) {
 
       led_strip_hsv2rgb(current_hue, saturation, brightness, &red, &green,
                         &blue);
+
+      // Применяем общую яркость из параметров
+      red = (red * params->brightness) / 255;
+      green = (green * params->brightness) / 255;
+      blue = (blue * params->brightness) / 255;
 
       params->led_strip_pixels[j * 3 + 0] = green;
       params->led_strip_pixels[j * 3 + 1] = red;
@@ -292,6 +308,11 @@ void led_strip_fire_task(void *pvParameters) {
         blue = 0; // Никакого синего компонента
       }
 
+      // Применяем общую яркость из параметров
+      red = (red * params->brightness) / 255;
+      green = (green * params->brightness) / 255;
+      blue = (blue * params->brightness) / 255;
+
       params->led_strip_pixels[j * 3 + 0] = green;
       params->led_strip_pixels[j * 3 + 1] = red;
       params->led_strip_pixels[j * 3 + 2] = blue;
@@ -350,6 +371,11 @@ void led_strip_soft_candle_task(void *pvParameters) {
 
       led_strip_hsv2rgb(current_hue, base_saturation[j], brightness, &red,
                         &green, &blue);
+
+      // Применяем общую яркость из параметров
+      red = (red * params->brightness) / 255;
+      green = (green * params->brightness) / 255;
+      blue = (blue * params->brightness) / 255;
 
       params->led_strip_pixels[j * 3 + 0] = green;
       params->led_strip_pixels[j * 3 + 1] = red;
