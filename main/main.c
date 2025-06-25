@@ -15,7 +15,8 @@
   10000000 // 10MHz resolution, 1 tick = 0.1us (led strip needs a high
            // resolution)
 #define RMT_LED_STRIP_GPIO_NUM 5
-#define BUTTON_GPIO_NUM 10
+#define BUTTON_GPIO_NUM 9
+#define BUTTON_BRIGHTNESS_GPIO_NUM 10
 
 static const char *TAG = "led_strip";
 
@@ -76,7 +77,14 @@ void app_main(void) {
   ESP_ERROR_CHECK(
       effect_manager_start_button_handler(&effect_manager, BUTTON_GPIO_NUM));
 
+  // Запуск обработчика кнопки яркости
+  ESP_LOGI(TAG, "Start brightness button handler");
+  ESP_ERROR_CHECK(effect_manager_start_brightness_button_handler(
+      &effect_manager, BUTTON_BRIGHTNESS_GPIO_NUM));
+
   ESP_LOGI(TAG, "LED strip initialized. Press button to switch effects.");
+  ESP_LOGI(TAG, "Press brightness button (GPIO %d) to adjust brightness.",
+           BUTTON_BRIGHTNESS_GPIO_NUM);
   ESP_LOGI(TAG, "Current effect: %s",
            effect_manager_get_current_name(&effect_manager));
 }
