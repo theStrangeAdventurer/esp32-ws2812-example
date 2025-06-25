@@ -315,21 +315,13 @@ esp_err_t effect_manager_get_status(effect_manager_t *manager,
   // Формируем JSON-like список эффектов
   char *ptr = status->effects_list;
   int remaining = sizeof(status->effects_list) - 1;
-  int written = snprintf(ptr, remaining, "[");
-  ptr += written;
-  remaining -= written;
+  *ptr = '\0'; // Начинаем с пустой строки
 
   for (int i = 0; i < manager->effect_count && remaining > 0; i++) {
-    written = snprintf(ptr, remaining,
-                       "%s{\"id\":%d,\"name\":\"%s\",\"description\":\"%s\"}",
-                       (i > 0) ? "," : "", i, manager->effects[i].name,
-                       manager->effects[i].description);
+    int written = snprintf(ptr, remaining, "%s%s", (i > 0) ? "," : "",
+                           manager->effects[i].name);
     ptr += written;
     remaining -= written;
-  }
-
-  if (remaining > 0) {
-    snprintf(ptr, remaining, "]");
   }
 
   return ESP_OK;

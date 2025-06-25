@@ -11,6 +11,7 @@
 #include "led_effects.h"
 #include "led_strip_encoder.h"
 #include "nvs_flash.h"
+#include "web_server.h"
 #include "wifi_manager.h"
 
 #define RMT_LED_STRIP_RESOLUTION_HZ                                            \
@@ -98,6 +99,10 @@ void app_main(void) {
   ESP_LOGI(TAG, "Start brightness button handler");
   ESP_ERROR_CHECK(effect_manager_start_brightness_button_handler(
       &effect_manager, BUTTON_BRIGHTNESS_GPIO_NUM));
+
+  // Запуск веб-сервера
+  ESP_LOGI(TAG, "Starting web server...");
+  ESP_ERROR_CHECK(web_server_init(&effect_manager));
 
   ESP_LOGI(TAG, "LED strip initialized. Press button to switch effects.");
   ESP_LOGI(TAG, "Press brightness button (GPIO %d) to adjust brightness.",
