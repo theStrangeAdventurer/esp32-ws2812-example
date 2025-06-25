@@ -73,13 +73,14 @@ void led_strip_rainbow_task(void *pvParameters) {
       params->led_strip_pixels[j * 3 + 1] = red;
       params->led_strip_pixels[j * 3 + 2] = blue;
     }
-    ESP_ERROR_CHECK(rmt_transmit(params->led_chan, params->led_encoder,
-                                 params->led_strip_pixels, params->pixel_buffer_size,
-                                 &params->tx_config));
+    ESP_ERROR_CHECK(rmt_transmit(
+        params->led_chan, params->led_encoder, params->led_strip_pixels,
+        params->pixel_buffer_size, &params->tx_config));
     ESP_ERROR_CHECK(rmt_tx_wait_all_done(params->led_chan, pdMS_TO_TICKS(100)));
     vTaskDelay(pdMS_TO_TICKS(EXAMPLE_CHASE_SPEED_MS));
     start_rgb = (start_rgb + 5) % 360; // Slower, smoother movement
   }
+  params->task_handle = NULL;
   vTaskDelete(NULL);
 }
 
@@ -155,12 +156,13 @@ void led_strip_candle_task(void *pvParameters) {
       params->led_strip_pixels[j * 3 + 2] = blue;
     }
 
-    ESP_ERROR_CHECK(rmt_transmit(params->led_chan, params->led_encoder,
-                                 params->led_strip_pixels, params->pixel_buffer_size,
-                                 &params->tx_config));
+    ESP_ERROR_CHECK(rmt_transmit(
+        params->led_chan, params->led_encoder, params->led_strip_pixels,
+        params->pixel_buffer_size, &params->tx_config));
     ESP_ERROR_CHECK(rmt_tx_wait_all_done(params->led_chan, pdMS_TO_TICKS(100)));
     vTaskDelay(pdMS_TO_TICKS(60)); // ~16 FPS для плавного эффекта
   }
+  params->task_handle = NULL;
   vTaskDelete(NULL);
 }
 
@@ -213,9 +215,9 @@ void led_strip_diagonal_flow_task(void *pvParameters) {
       params->led_strip_pixels[j * 3 + 2] = blue;
     }
 
-    ESP_ERROR_CHECK(rmt_transmit(params->led_chan, params->led_encoder,
-                                 params->led_strip_pixels, params->pixel_buffer_size,
-                                 &params->tx_config));
+    ESP_ERROR_CHECK(rmt_transmit(
+        params->led_chan, params->led_encoder, params->led_strip_pixels,
+        params->pixel_buffer_size, &params->tx_config));
     ESP_ERROR_CHECK(rmt_tx_wait_all_done(params->led_chan, pdMS_TO_TICKS(100)));
 
     phase += speed;
@@ -225,6 +227,7 @@ void led_strip_diagonal_flow_task(void *pvParameters) {
 
     vTaskDelay(pdMS_TO_TICKS(40));
   }
+  params->task_handle = NULL;
   vTaskDelete(NULL);
 }
 
@@ -299,12 +302,13 @@ void led_strip_fire_task(void *pvParameters) {
         flame_phase[j] -= M_PI * 2;
     }
 
-    ESP_ERROR_CHECK(rmt_transmit(params->led_chan, params->led_encoder,
-                                 params->led_strip_pixels, params->pixel_buffer_size,
-                                 &params->tx_config));
+    ESP_ERROR_CHECK(rmt_transmit(
+        params->led_chan, params->led_encoder, params->led_strip_pixels,
+        params->pixel_buffer_size, &params->tx_config));
     ESP_ERROR_CHECK(rmt_tx_wait_all_done(params->led_chan, pdMS_TO_TICKS(100)));
     vTaskDelay(pdMS_TO_TICKS(60)); // ~16 FPS
   }
+  params->task_handle = NULL;
   vTaskDelete(NULL);
 }
 
@@ -356,11 +360,12 @@ void led_strip_soft_candle_task(void *pvParameters) {
       if (breathing_phase[j] > M_PI * 2)
         breathing_phase[j] -= M_PI * 2;
     }
-    ESP_ERROR_CHECK(rmt_transmit(params->led_chan, params->led_encoder,
-                                 params->led_strip_pixels, params->pixel_buffer_size,
-                                 &params->tx_config));
+    ESP_ERROR_CHECK(rmt_transmit(
+        params->led_chan, params->led_encoder, params->led_strip_pixels,
+        params->pixel_buffer_size, &params->tx_config));
     ESP_ERROR_CHECK(rmt_tx_wait_all_done(params->led_chan, pdMS_TO_TICKS(100)));
     vTaskDelay(pdMS_TO_TICKS(80)); // ~12 FPS для спокойного эффекта
   }
+  params->task_handle = NULL;
   vTaskDelete(NULL);
 }

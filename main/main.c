@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Unlicense OR CC0-1.0
  */
 #include "driver/rmt_tx.h"
+#include "effect_manager.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -14,10 +15,12 @@
   10000000 // 10MHz resolution, 1 tick = 0.1us (led strip needs a high
            // resolution)
 #define RMT_LED_STRIP_GPIO_NUM 5
+#define BUTTON_GPIO_NUM 10
 
 static const char *TAG = "led_strip";
 
 static uint8_t led_strip_pixels[EXAMPLE_LED_NUMBERS * 3];
+static effect_manager_t effect_manager;
 
 void app_main(void) {
   ESP_LOGI(TAG, "Create RMT TX channel");
@@ -48,7 +51,13 @@ void app_main(void) {
       .loop_count = 0, // no transfer loop
   };
 
+  // Подготовка параметров для эффектов
   led_effect_params_t *params = malloc(sizeof(led_effect_params_t));
+  if (params == NULL) {
+    ESP_LOGE(TAG, "Failed to allocate memory for LED effect parameters");
+    return;
+  }
+
   *params =
       (led_effect_params_t){.led_chan = led_chan,
                             .led_encoder = led_encoder,
@@ -58,19 +67,16 @@ void app_main(void) {
                             .led_strip_pixels = led_strip_pixels,
                             .pixel_buffer_size = sizeof(led_strip_pixels)};
 
-  xTaskCreate(led_strip_diagonal_flow_task, "led_effect", 4096, params, 5,
-              &params->task_handle);
+  // Инициализация менеджера эффектов
+  ESP_LOGI(TAG, "Initialize effect manager");
+  ESP_ERROR_CHECK(effect_manager_init(&effect_manager, params));
 
-  // Выберите нужный эффект, раскомментировав одну из строк:
-  // xTaskCreate(led_strip_fire_task, "led_effect", 4096, params, 5,
-  //             &params->task_handle);
+  // Запуск обработчика кнопки
+  ESP_LOGI(TAG, "Start button handler");
+  ESP_ERROR_CHECK(
+      effect_manager_start_button_handler(&effect_manager, BUTTON_GPIO_NUM));
 
-  // xTaskCreate(led_strip_soft_candle_task, "led_effect", 4096, params, 5,
-  //             &params->task_handle);
-
-  // xTaskCreate(led_strip_candle_task, "led_effect", 4096, params, 5,
-  //             &params->task_handle);
-
-  // xTaskCreate(led_strip_rainbow_task, "led_effect", 4096, params, 5,
-  //             &params->task_handle);
+  ESP_LOGI(TAG, "LED strip initialized. Press button to switch effects.");
+  ESP_LOGI(TAG, "Current effect: %s",
+           effect_manager_get_current_name(&effect_manager));
 }
