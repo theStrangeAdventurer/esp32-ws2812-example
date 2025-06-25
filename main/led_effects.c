@@ -1,35 +1,17 @@
 /*
- * SPDX-FileCopyrightText: 2021-2022 Espressif Systems (Shanghai) CO LTD
- *
- * SPDX-License-Identifier: Unlicense OR CC0-1.0
+ * LED Strip Effects Implementation
  */
-#include "driver/rmt_tx.h"
+
+#include "led_effects.h"
 #include "esp_log.h"
 #include "esp_random.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "led_strip_encoder.h"
 #include <math.h>
 #include <string.h>
 
-#define RMT_LED_STRIP_RESOLUTION_HZ                                            \
-  10000000 // 10MHz resolution, 1 tick = 0.1us (led strip needs a high
-           // resolution)
-#define RMT_LED_STRIP_GPIO_NUM 5
+static const char *TAG = "led_effects";
 
-#define EXAMPLE_LED_NUMBERS 4
-#define EXAMPLE_CHASE_SPEED_MS 10
-
-static const char *TAG = "example";
-
-static uint8_t led_strip_pixels[EXAMPLE_LED_NUMBERS * 3];
-
-/**
- * @brief Simple helper function, converting HSV color space to RGB color space
- *
- * Wiki: https://en.wikipedia.org/wiki/HSL_and_HSV
- *
- */
 void led_strip_hsv2rgb(uint32_t h, uint32_t s, uint32_t v, uint32_t *r,
                        uint32_t *g, uint32_t *b) {
   h %= 360; // h -> [0,360]
@@ -76,14 +58,6 @@ void led_strip_hsv2rgb(uint32_t h, uint32_t s, uint32_t v, uint32_t *r,
   }
 }
 
-typedef struct {
-  rmt_channel_handle_t led_chan;
-  rmt_encoder_handle_t led_encoder;
-  rmt_transmit_config_t tx_config;
-  bool running;
-  TaskHandle_t task_handle;
-} led_effect_params_t;
-
 void led_strip_rainbow_task(void *pvParameters) {
   led_effect_params_t *params = (led_effect_params_t *)pvParameters;
   uint32_t red, green, blue;
@@ -95,12 +69,12 @@ void led_strip_rainbow_task(void *pvParameters) {
       // Modified calculation to include moving offset
       hue = (j * 360 / EXAMPLE_LED_NUMBERS + start_rgb) % 360;
       led_strip_hsv2rgb(hue, 100, 100, &red, &green, &blue);
-      led_strip_pixels[j * 3 + 0] = green;
-      led_strip_pixels[j * 3 + 1] = red;
-      led_strip_pixels[j * 3 + 2] = blue;
+      params->led_strip_pixels[j * 3 + 0] = green;
+      params->led_strip_pixels[j * 3 + 1] = red;
+      params->led_strip_pixels[j * 3 + 2] = blue;
     }
     ESP_ERROR_CHECK(rmt_transmit(params->led_chan, params->led_encoder,
-                                 led_strip_pixels, sizeof(led_strip_pixels),
+                                 params->led_strip_pixels, params->pixel_buffer_size,
                                  &params->tx_config));
     ESP_ERROR_CHECK(rmt_tx_wait_all_done(params->led_chan, pdMS_TO_TICKS(100)));
     vTaskDelay(pdMS_TO_TICKS(EXAMPLE_CHASE_SPEED_MS));
@@ -176,13 +150,13 @@ void led_strip_candle_task(void *pvParameters) {
                         &green, &blue);
 
       // Сохраняем оригинальный порядок цветов GRB
-      led_strip_pixels[j * 3 + 0] = green;
-      led_strip_pixels[j * 3 + 1] = red;
-      led_strip_pixels[j * 3 + 2] = blue;
+      params->led_strip_pixels[j * 3 + 0] = green;
+      params->led_strip_pixels[j * 3 + 1] = red;
+      params->led_strip_pixels[j * 3 + 2] = blue;
     }
 
     ESP_ERROR_CHECK(rmt_transmit(params->led_chan, params->led_encoder,
-                                 led_strip_pixels, sizeof(led_strip_pixels),
+                                 params->led_strip_pixels, params->pixel_buffer_size,
                                  &params->tx_config));
     ESP_ERROR_CHECK(rmt_tx_wait_all_done(params->led_chan, pdMS_TO_TICKS(100)));
     vTaskDelay(pdMS_TO_TICKS(60)); // ~16 FPS для плавного эффекта
@@ -234,13 +208,13 @@ void led_strip_diagonal_flow_task(void *pvParameters) {
       led_strip_hsv2rgb(current_hue, saturation, brightness, &red, &green,
                         &blue);
 
-      led_strip_pixels[j * 3 + 0] = green;
-      led_strip_pixels[j * 3 + 1] = red;
-      led_strip_pixels[j * 3 + 2] = blue;
+      params->led_strip_pixels[j * 3 + 0] = green;
+      params->led_strip_pixels[j * 3 + 1] = red;
+      params->led_strip_pixels[j * 3 + 2] = blue;
     }
 
     ESP_ERROR_CHECK(rmt_transmit(params->led_chan, params->led_encoder,
-                                 led_strip_pixels, sizeof(led_strip_pixels),
+                                 params->led_strip_pixels, params->pixel_buffer_size,
                                  &params->tx_config));
     ESP_ERROR_CHECK(rmt_tx_wait_all_done(params->led_chan, pdMS_TO_TICKS(100)));
 
@@ -315,9 +289,9 @@ void led_strip_fire_task(void *pvParameters) {
         blue = 0; // Никакого синего компонента
       }
 
-      led_strip_pixels[j * 3 + 0] = green;
-      led_strip_pixels[j * 3 + 1] = red;
-      led_strip_pixels[j * 3 + 2] = blue;
+      params->led_strip_pixels[j * 3 + 0] = green;
+      params->led_strip_pixels[j * 3 + 1] = red;
+      params->led_strip_pixels[j * 3 + 2] = blue;
 
       // Обновляем фазу дыхания
       flame_phase[j] += flame_speed[j];
@@ -326,7 +300,7 @@ void led_strip_fire_task(void *pvParameters) {
     }
 
     ESP_ERROR_CHECK(rmt_transmit(params->led_chan, params->led_encoder,
-                                 led_strip_pixels, sizeof(led_strip_pixels),
+                                 params->led_strip_pixels, params->pixel_buffer_size,
                                  &params->tx_config));
     ESP_ERROR_CHECK(rmt_tx_wait_all_done(params->led_chan, pdMS_TO_TICKS(100)));
     vTaskDelay(pdMS_TO_TICKS(60)); // ~16 FPS
@@ -373,9 +347,9 @@ void led_strip_soft_candle_task(void *pvParameters) {
       led_strip_hsv2rgb(current_hue, base_saturation[j], brightness, &red,
                         &green, &blue);
 
-      led_strip_pixels[j * 3 + 0] = green;
-      led_strip_pixels[j * 3 + 1] = red;
-      led_strip_pixels[j * 3 + 2] = blue;
+      params->led_strip_pixels[j * 3 + 0] = green;
+      params->led_strip_pixels[j * 3 + 1] = red;
+      params->led_strip_pixels[j * 3 + 2] = blue;
 
       // Обновляем фазу дыхания
       breathing_phase[j] += breathing_speed[j];
@@ -383,63 +357,10 @@ void led_strip_soft_candle_task(void *pvParameters) {
         breathing_phase[j] -= M_PI * 2;
     }
     ESP_ERROR_CHECK(rmt_transmit(params->led_chan, params->led_encoder,
-                                 led_strip_pixels, sizeof(led_strip_pixels),
+                                 params->led_strip_pixels, params->pixel_buffer_size,
                                  &params->tx_config));
     ESP_ERROR_CHECK(rmt_tx_wait_all_done(params->led_chan, pdMS_TO_TICKS(100)));
     vTaskDelay(pdMS_TO_TICKS(80)); // ~12 FPS для спокойного эффекта
   }
   vTaskDelete(NULL);
-}
-
-void app_main(void) {
-  ESP_LOGI(TAG, "Create RMT TX channel");
-  rmt_channel_handle_t led_chan = NULL;
-  rmt_tx_channel_config_t tx_chan_config = {
-      .clk_src = RMT_CLK_SRC_DEFAULT, // select source clock
-      .gpio_num = RMT_LED_STRIP_GPIO_NUM,
-      .mem_block_symbols =
-          64, // increase the block size can make the LED less flickering
-      .resolution_hz = RMT_LED_STRIP_RESOLUTION_HZ,
-      .trans_queue_depth = 4, // set the number of transactions that can be
-                              // pending in the background
-  };
-  ESP_ERROR_CHECK(rmt_new_tx_channel(&tx_chan_config, &led_chan));
-
-  ESP_LOGI(TAG, "Install led strip encoder");
-  rmt_encoder_handle_t led_encoder = NULL;
-  led_strip_encoder_config_t encoder_config = {
-      .resolution = RMT_LED_STRIP_RESOLUTION_HZ,
-  };
-  ESP_ERROR_CHECK(rmt_new_led_strip_encoder(&encoder_config, &led_encoder));
-
-  ESP_LOGI(TAG, "Enable RMT TX channel");
-  ESP_ERROR_CHECK(rmt_enable(led_chan));
-
-  ESP_LOGI(TAG, "Start LED effects");
-  rmt_transmit_config_t tx_config = {
-      .loop_count = 0, // no transfer loop
-  };
-
-  led_effect_params_t *params = malloc(sizeof(led_effect_params_t));
-  *params = (led_effect_params_t){.led_chan = led_chan,
-                                  .led_encoder = led_encoder,
-                                  .tx_config = tx_config,
-                                  .running = true,
-                                  .task_handle = NULL};
-
-  xTaskCreate(led_strip_diagonal_flow_task, "led_effect", 4096, params, 5,
-              &params->task_handle);
-
-  // Выберите нужный эффект, раскомментировав одну из строк:
-  // xTaskCreate(led_strip_fire_task, "led_effect", 4096, params, 5,
-  //             &params->task_handle);
-
-  // xTaskCreate(led_strip_soft_candle_task, "led_effect", 4096, params, 5,
-  //             &params->task_handle);
-
-  // xTaskCreate(led_strip_candle_task, "led_effect", 4096, params, 5,
-  //             &params->task_handle);
-
-  // xTaskCreate(led_strip_rainbow_task, "led_effect", 4096, params, 5,
-  //             &params->task_handle);
 }
