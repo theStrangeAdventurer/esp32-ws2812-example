@@ -1,6 +1,6 @@
 import { render, h } from 'preact';
 import { useState, useRef, useEffect } from 'preact/hooks';
-import { getStatus, setBrightness } from './utils';
+import { getStatus, setBrightness, getEffects, setEffect } from './utils';
 
 import './styles.css';
 
@@ -12,6 +12,8 @@ const App = () => {
 	const lastSetVal = useRef(0);
 	const sliderRef = useRef<HTMLDivElement>(null);
 	const [isDragging, setIsDragging] = useState<boolean>(false);
+	const [effects, setEffects] = useState<string[]>([]);
+	const [currentEffect, setCurrentEffect] = useState<string>('');
 
 	// Функция для расчета значения на основе позиции касания/клика
 	const calculateValue = (clientY: number) => {
@@ -56,11 +58,22 @@ const App = () => {
 		setIsDragging(false);
 	};
 
+	// Обработчик выбора эффекта
+	const handleEffectSelect = async (effectName: string) => {
+		setCurrentEffect(effectName);
+		await setEffect(effectName);
+	};
+
 	useEffect(() => {
 		const fetchInitialValue = async () => {
-			const { brightness = "" } = await getStatus()
+			const { brightness = "", current_effect = "" } = await getStatus();
 			const value = (+brightness || DEFAULT_BRIGHTNESS);
 			setValue(value);
+			setCurrentEffect(current_effect);
+
+			// Загружаем список эффектов
+			const effectsList = await getEffects();
+			setEffects(effectsList || []);
 		};
 
 		fetchInitialValue();
@@ -123,6 +136,21 @@ const App = () => {
 				/>
 				<div className="brightness-label">
 					{Math.round(value)}%
+				</div>
+			</div>
+
+			{/* Горизонтальный скроллируемый контрол для эффектов */}
+			<div className="effects-container">
+				<div className="effects-scroll">
+					{effects.map((effect) => (
+						<div
+							key={effect}
+							className={`effect-item ${currentEffect === effect ? 'active' : ''}`}
+							onClick={() => handleEffectSelect(effect)}
+						>
+							{effect}
+						</div>
+					))}
 				</div>
 			</div>
 		</div>
