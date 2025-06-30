@@ -1,6 +1,6 @@
 import { render, h } from 'preact';
 import { useState, useRef, useEffect } from 'preact/hooks';
-import { getStatus, setBrightness, getEffects, setEffect } from './utils';
+import { getStatus, setBrightness, getEffects, setEffect, setPower } from './utils';
 
 import './styles.css';
 
@@ -14,6 +14,14 @@ const App = () => {
 	const [isDragging, setIsDragging] = useState<boolean>(false);
 	const [effects, setEffects] = useState<string[]>([]);
 	const [currentEffect, setCurrentEffect] = useState<string>('');
+	const [isOn, setIsOn] = useState<boolean>(true);
+
+	// Обработчик переключения switcher
+	const handleSwitcherToggle = async () => {
+		const newState = !isOn;
+		setIsOn(newState);
+		await setPower(newState);
+	};
 
 	// Функция для расчета значения на основе позиции касания/клика
 	const calculateValue = (clientY: number) => {
@@ -66,10 +74,11 @@ const App = () => {
 
 	useEffect(() => {
 		const fetchInitialValue = async () => {
-			const { brightness = "", current_effect = "" } = await getStatus();
+			const { brightness = "", current_effect = "", is_running = true } = await getStatus();
 			const value = (+brightness || DEFAULT_BRIGHTNESS);
 			setValue(value);
 			setCurrentEffect(current_effect);
+			setIsOn(is_running);
 
 			// Загружаем список эффектов
 			const effectsList = await getEffects();
@@ -142,6 +151,16 @@ const App = () => {
 			{/* Горизонтальный скроллируемый контрол для эффектов */}
 			<div className="effects-container">
 				<div className="effects-scroll">
+					{/* Switcher компонент */}
+					<div
+						className={`switcher ${isOn ? 'active' : ''}`}
+						onClick={handleSwitcherToggle}
+					>
+						<div className="switcher-handle">
+							{isOn ? 'ON' : 'OFF'}
+						</div>
+					</div>
+
 					{effects.map((effect) => (
 						<div
 							key={effect}

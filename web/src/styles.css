@@ -128,3 +128,50 @@ body {
 	border-color: #4268C5;
 	box-shadow: 0 4px 12px rgba(66, 104, 197, 0.3);
 }
+
+/* Switcher styles */
+.switcher {
+	flex-shrink: 0;
+	width: 60px;
+	height: 36px;
+	background-color: rgba(255, 255, 255, 0.1);
+	border-radius: 18px;
+	border: 1px solid transparent;
+	cursor: pointer;
+	transition: all 0.3s ease;
+	position: relative;
+	margin-right: 10px;
+}
+
+.switcher:hover {
+	background-color: rgba(255, 255, 255, 0.2);
+}
+
+.switcher.active {
+	background-color: #4268C5;
+	border-color: #4268C5;
+	box-shadow: 0 4px 12px rgba(66, 104, 197, 0.3);
+}
+
+.switcher-handle {
+	width: 28px;
+	height: 28px;
+	background-color: #fff;
+	border-radius: 50%;
+	position: absolute;
+	top: 3px;
+	left: 3px;
+	transition: all 0.3s ease;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 10px;
+	font-weight: bold;
+	color: #333;
+	font-family: sans-serif;
+}
+
+.switcher.active .switcher-handle {
+	transform: translateX(24px);
+	color: #4268C5;
+}
