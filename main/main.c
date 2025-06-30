@@ -6,12 +6,12 @@
 #include "driver/rmt_tx.h"
 #include "effect_manager.h"
 #include "esp_log.h"
-#include "esp_spiffs.h" // Добавляем для SPIFFS
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "led_effects.h"
 #include "led_strip_encoder.h"
 #include "nvs_flash.h"
+#include "spiffs_manager.h"
 #include "web_server.h"
 #include "wifi_manager.h"
 #define RMT_LED_STRIP_RESOLUTION_HZ                                            \
@@ -27,41 +27,6 @@ static const char *TAG = "led_strip";
 
 static uint8_t led_strip_pixels[EXAMPLE_LED_NUMBERS * 3];
 static effect_manager_t effect_manager;
-
-// Инициализация SPIFFS
-static void init_spiffs(void) {
-  ESP_LOGI(TAG, "Initializing SPIFFS");
-
-  esp_vfs_spiffs_conf_t conf = {.base_path = "/spiffs",
-                                .partition_label = NULL,
-                                .max_files = 5,
-                                .format_if_mount_failed = true};
-
-  esp_err_t ret = esp_vfs_spiffs_register(&conf);
-
-  if (ret != ESP_OK) {
-    ESP_LOGE(TAG, "SPIFFS mount failed! (err=0x%x)", ret);
-    if (ret == ESP_FAIL) {
-      ESP_LOGE(TAG, "Formatting SPIFFS...");
-      esp_spiffs_format(NULL); // Форматирование при ошибке
-      esp_vfs_spiffs_register(&conf);
-    } else if (ret == ESP_ERR_NOT_FOUND) {
-      ESP_LOGE(TAG, "Failed to find SPIFFS partition");
-    } else {
-      ESP_LOGE(TAG, "Failed to initialize SPIFFS (%s)", esp_err_to_name(ret));
-    }
-    return;
-  }
-
-  size_t total = 0, used = 0;
-  ret = esp_spiffs_info(NULL, &total, &used);
-  if (ret != ESP_OK) {
-    ESP_LOGE(TAG, "Failed to get SPIFFS partition information (%s)",
-             esp_err_to_name(ret));
-  } else {
-    ESP_LOGI(TAG, "Partition size: total: %d, used: %d", (int)total, (int)used);
-  }
-}
 
 void app_main(void) {
   // Initialize NVS
@@ -135,7 +100,10 @@ void app_main(void) {
   ESP_ERROR_CHECK(effect_manager_start_brightness_button_handler(
       &effect_manager, BUTTON_BRIGHTNESS_GPIO_NUM));
 
-  init_spiffs();
+  // Initialize SPIFFS
+  ESP_LOGI(TAG, "Initializing SPIFFS...");
+  ESP_ERROR_CHECK(spiffs_manager_init());
+
   // Запуск веб-сервера
   ESP_LOGI(TAG, "Starting web server...");
   ESP_ERROR_CHECK(web_server_init(&effect_manager));
