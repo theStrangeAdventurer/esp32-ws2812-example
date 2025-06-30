@@ -6,12 +6,14 @@
 #include "cJSON.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
+#include "mdns.h"
 #include <fcntl.h> // For open() and O_* constants
 #include <stdint.h>
 #include <string.h>
-#include <unistd.h>                       // For close() and write()
-                                          //
-#define UPLOAD_BUFFER_SIZE 4096           // Уменьшаем буфер до 4KB
+#include <unistd.h> // For close() and write()
+
+#define UPLOAD_BUFFER_SIZE 4096 // Уменьшаем буфер до 4KB
+#define MDNS_HOSTNAME "lamp-00"
 #define MIN(a, b) ((a) < (b) ? (a) : (b)) // Добавляем макрос MIN
 
 static char *cached_index_html = NULL;
@@ -699,7 +701,34 @@ esp_err_t upload_handler(httpd_req_t *req) {
   }
 }
 
+esp_err_t init_mdns() {
+  esp_err_t err = mdns_init();
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "mDNS Init failed: %s", esp_err_to_name(err));
+    return err;
+  }
+
+  // Установить имя хоста
+  err = mdns_hostname_set(MDNS_HOSTNAME);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "mDNS Set hostname failed: %s", esp_err_to_name(err));
+    return err;
+  }
+  err = mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "mDNS Add service failed: %s", esp_err_to_name(err));
+    return err;
+  }
+
+  ESP_LOGI(TAG, "mDNS started: http://%s.local", MDNS_HOSTNAME);
+  return ESP_OK;
+}
+
 esp_err_t web_server_init(effect_manager_t *effect_mgr) {
+  // Initialize mDNS (after all other components)
+  ESP_LOGI(TAG, "Initializing mDNS...");
+  init_mdns();
+
   if (effect_mgr == NULL) {
     ESP_LOGE(TAG, "Effect manager is NULL");
     return ESP_ERR_INVALID_ARG;

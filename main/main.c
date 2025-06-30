@@ -107,7 +107,6 @@ void app_main(void) {
   // Запуск веб-сервера
   ESP_LOGI(TAG, "Starting web server...");
   ESP_ERROR_CHECK(web_server_init(&effect_manager));
-
   ESP_LOGI(TAG, "LED strip initialized. Press button to switch effects.");
   ESP_LOGI(TAG, "Press brightness button (GPIO %d) to adjust brightness.",
            BUTTON_BRIGHTNESS_GPIO_NUM);
