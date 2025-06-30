@@ -15,6 +15,10 @@
 #define UPLOAD_BUFFER_SIZE 4096 // Уменьшаем буфер до 4KB
 #define MDNS_HOSTNAME "lamp-00"
 #define MIN(a, b) ((a) < (b) ? (a) : (b)) // Добавляем макрос MIN
+#define SCALE_TO_255(x)                                                        \
+  ((uint8_t)((x) * 2.55)) // Макрос для перевода 0-100 в 0-255
+#define SCALE_TO_100(x)                                                        \
+  ((uint8_t)((x) / 2.55)) // Макрос для перевода 0-255 в 0-100
 
 static char *cached_index_html = NULL;
 static size_t cached_index_len = 0;
@@ -38,7 +42,6 @@ const char *default_html_response =
     "</body>\n"
     "</html>";
 
-// HTTP обработчик для получения статуса
 static esp_err_t status_get_handler(httpd_req_t *req) {
   if (g_effect_manager == NULL) {
     httpd_resp_send_500(req);
@@ -47,7 +50,6 @@ static esp_err_t status_get_handler(httpd_req_t *req) {
 
   cJSON *json = cJSON_CreateObject();
 
-  // Получаем статус эффектов
   effect_status_t status;
   esp_err_t ret = effect_manager_get_status(g_effect_manager, &status);
 
@@ -56,8 +58,9 @@ static esp_err_t status_get_handler(httpd_req_t *req) {
     cJSON_AddNumberToObject(json, "current_effect_index",
                             status.current_effect);
     cJSON_AddNumberToObject(json, "total_effects", status.total_effects);
-    cJSON_AddNumberToObject(json, "brightness",
-                            effect_manager_get_brightness(g_effect_manager));
+    cJSON_AddNumberToObject(
+        json, "brightness",
+        SCALE_TO_100(effect_manager_get_brightness(g_effect_manager)));
     cJSON_AddBoolToObject(json, "is_running",
                           g_effect_manager->params->running);
 
@@ -245,7 +248,7 @@ static esp_err_t brightness_post_handler(httpd_req_t *req) {
 
   if (cJSON_IsNumber(brightness)) {
     // Устанавливаем абсолютное значение яркости
-    uint8_t brightness_value = (uint8_t)brightness->valueint;
+    uint8_t brightness_value = SCALE_TO_255((uint8_t)brightness->valueint);
     if (brightness_value > 255)
       brightness_value = 255;
     if (brightness_value < 1)
