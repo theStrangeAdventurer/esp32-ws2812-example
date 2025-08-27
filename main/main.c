@@ -26,7 +26,7 @@
 
 static const char *TAG = "led_strip";
 
-static uint8_t led_strip_pixels[EXAMPLE_LED_NUMBERS * 3];
+static uint8_t led_strip_pixels[LED_NUMBERS * 3];
 static effect_manager_t effect_manager;
 
 void app_main(void) {

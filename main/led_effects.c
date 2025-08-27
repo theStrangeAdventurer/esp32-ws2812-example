@@ -62,9 +62,9 @@ void led_strip_rainbow_task(void *pvParameters) {
   uint16_t start_rgb = 0;
 
   while (params->running) {
-    for (int j = 0; j < EXAMPLE_LED_NUMBERS; j++) {
+    for (int j = 0; j < LED_NUMBERS; j++) {
       // Modified calculation to include moving offset
-      hue = (j * 360 / EXAMPLE_LED_NUMBERS + start_rgb) % 360;
+      hue = (j * 360 / LED_NUMBERS + start_rgb) % 360;
       led_strip_hsv2rgb(hue, 100, 100, &red, &green, &blue);
 
       // Применяем яркость из параметров
@@ -92,15 +92,15 @@ void led_strip_candle_task(void *pvParameters) {
   uint32_t red, green, blue;
 
   // Индивидуальные значения и счетчики для каждого светодиода
-  uint8_t led_brightness[EXAMPLE_LED_NUMBERS];
-  uint8_t led_target[EXAMPLE_LED_NUMBERS];
-  uint16_t led_hue[EXAMPLE_LED_NUMBERS];
-  uint8_t led_saturation[EXAMPLE_LED_NUMBERS];
-  uint16_t hue_change_timer[EXAMPLE_LED_NUMBERS];
-  uint8_t brightness_step[EXAMPLE_LED_NUMBERS];
+  uint8_t led_brightness[LED_NUMBERS];
+  uint8_t led_target[LED_NUMBERS];
+  uint16_t led_hue[LED_NUMBERS];
+  uint8_t led_saturation[LED_NUMBERS];
+  uint16_t hue_change_timer[LED_NUMBERS];
+  uint8_t brightness_step[LED_NUMBERS];
 
   // Инициализация начальных значений с более широким диапазоном
-  for (int i = 0; i < EXAMPLE_LED_NUMBERS; i++) {
+  for (int i = 0; i < LED_NUMBERS; i++) {
     led_brightness[i] = 30 + (esp_random() % 50); // 30-79%
     led_target[i] = 30 + (esp_random() % 50);
     led_hue[i] = 5 + (esp_random() % 20); // 5-24° (оранжево-красный)
@@ -111,7 +111,7 @@ void led_strip_candle_task(void *pvParameters) {
   }
 
   while (params->running) {
-    for (int j = 0; j < EXAMPLE_LED_NUMBERS; j++) {
+    for (int j = 0; j < LED_NUMBERS; j++) {
       // Плавное изменение яркости с переменным шагом
       if (led_brightness[j] < led_target[j]) {
         led_brightness[j] =
@@ -191,7 +191,7 @@ void led_strip_diagonal_flow_task(void *pvParameters) {
   static bool fade_detected[2] = {false, false};  // флаги обнаружения угасания
 
   while (params->running) {
-    for (int j = 0; j < EXAMPLE_LED_NUMBERS; j++) {
+    for (int j = 0; j < LED_NUMBERS; j++) {
       int group = (j == 0 || j == 2) ? 0 : 1;
       float led_phase = phase + (group * M_PI);
 
@@ -330,64 +330,33 @@ void led_strip_fire_task(void *pvParameters) {
   vTaskDelete(NULL);
 }
 
-void led_strip_soft_candle_task(void *pvParameters) {
+void led_strip_soft_light_task(void *pvParameters) {
   led_effect_params_t *params = (led_effect_params_t *)pvParameters;
   uint32_t red, green, blue;
 
-  // Мягкое дыхание свечей
-  float breathing_phase[EXAMPLE_LED_NUMBERS];
-  float breathing_speed[EXAMPLE_LED_NUMBERS];
-  uint16_t base_hue[EXAMPLE_LED_NUMBERS];
-  uint8_t base_saturation[EXAMPLE_LED_NUMBERS];
-
-  // Инициализация каждой "свечи"
-  for (int i = 0; i < EXAMPLE_LED_NUMBERS; i++) {
-    breathing_phase[i] = (esp_random() % 628) / 100.0f;         // 0-2π
-    breathing_speed[i] = 0.02f + (esp_random() % 15) / 1000.0f; // 0.02-0.035
-    base_hue[i] = 15 + (esp_random() % 20);        // 15-34° (оранжево-красный)
-    base_saturation[i] = 80 + (esp_random() % 20); // 80-99%
-  }
-
   while (params->running) {
-    for (int j = 0; j < EXAMPLE_LED_NUMBERS; j++) {
-      // Мягкое дыхание вместо резких мерцаний
-      float breathing = (sin(breathing_phase[j]) + 1.0f) / 2.0f; // 0-1
+    for (int i = 0; i < LED_NUMBERS; i++) {
+      // Теплый белый ~2300K
+      red = 255;
+      green = 115;
+      blue = 23;
 
-      // Добавляем небольшие случайные вариации для реализма
-      float flicker = 0.95f + (esp_random() % 10) / 100.0f; // 0.95-1.05
-      breathing *= flicker;
-      if (breathing > 1.0f)
-        breathing = 1.0f;
-
-      // Плавно меняющаяся яркость в диапазоне свечи
-      uint8_t brightness = 40 + (uint8_t)(50 * breathing); // 40-90%
-
-      // Очень медленные изменения оттенка
-      uint16_t current_hue =
-          base_hue[j] + (uint8_t)(5 * sin(breathing_phase[j] * 0.1f));
-
-      led_strip_hsv2rgb(current_hue, base_saturation[j], brightness, &red,
-                        &green, &blue);
-
-      // Применяем общую яркость из параметров
-      red = (red * params->brightness) / 255;
-      green = (green * params->brightness) / 255;
-      blue = (blue * params->brightness) / 255;
-
-      params->led_strip_pixels[j * 3 + 0] = green;
-      params->led_strip_pixels[j * 3 + 1] = red;
-      params->led_strip_pixels[j * 3 + 2] = blue;
-
-      // Обновляем фазу дыхания
-      breathing_phase[j] += breathing_speed[j];
-      if (breathing_phase[j] > M_PI * 2)
-        breathing_phase[j] -= M_PI * 2;
+      if (params->brightness <= 1) {
+        red = green = blue = 0;
+      } else {
+        red = (red * params->brightness) / 255;
+        green = (green * params->brightness) / 255;
+        blue = (blue * params->brightness) / 255;
+      }
+      params->led_strip_pixels[i * 3 + 0] = green;
+      params->led_strip_pixels[i * 3 + 1] = red;
+      params->led_strip_pixels[i * 3 + 2] = blue;
     }
     ESP_ERROR_CHECK(rmt_transmit(
         params->led_chan, params->led_encoder, params->led_strip_pixels,
         params->pixel_buffer_size, &params->tx_config));
     ESP_ERROR_CHECK(rmt_tx_wait_all_done(params->led_chan, pdMS_TO_TICKS(100)));
-    vTaskDelay(pdMS_TO_TICKS(80)); // ~12 FPS для спокойного эффекта
+    vTaskDelay(pdMS_TO_TICKS(100)); // 10 FPS для стабильного мягкого света
   }
   params->task_handle = NULL;
   vTaskDelete(NULL);

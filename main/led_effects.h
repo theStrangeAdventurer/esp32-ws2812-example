@@ -1,6 +1,6 @@
 /*
  * LED Strip Effects Module
- * 
+ *
  * This module contains various LED strip effects for ESP32
  */
 
@@ -16,24 +16,24 @@ extern "C" {
 #endif
 
 // Configuration constants
-#define EXAMPLE_LED_NUMBERS 4
+#define LED_NUMBERS 4
 #define EXAMPLE_CHASE_SPEED_MS 10
 
 // Effect parameters structure
 typedef struct {
-    rmt_channel_handle_t led_chan;
-    rmt_encoder_handle_t led_encoder;
-    rmt_transmit_config_t tx_config;
-    bool running;
-    TaskHandle_t task_handle;
-    uint8_t *led_strip_pixels;  // Pointer to LED pixel buffer
-    size_t pixel_buffer_size;   // Size of pixel buffer
-   uint8_t brightness;         // Brightness level (1-255)
+  rmt_channel_handle_t led_chan;
+  rmt_encoder_handle_t led_encoder;
+  rmt_transmit_config_t tx_config;
+  bool running;
+  TaskHandle_t task_handle;
+  uint8_t *led_strip_pixels; // Pointer to LED pixel buffer
+  size_t pixel_buffer_size;  // Size of pixel buffer
+  uint8_t brightness;        // Brightness level (1-255)
 } led_effect_params_t;
 
 /**
  * @brief Convert HSV color space to RGB color space
- * 
+ *
  * @param h Hue (0-360)
  * @param s Saturation (0-100)
  * @param v Value/Brightness (0-100)
@@ -41,7 +41,8 @@ typedef struct {
  * @param g Green output (0-255)
  * @param b Blue output (0-255)
  */
-void led_strip_hsv2rgb(uint32_t h, uint32_t s, uint32_t v, uint32_t *r, uint32_t *g, uint32_t *b);
+void led_strip_hsv2rgb(uint32_t h, uint32_t s, uint32_t v, uint32_t *r,
+                       uint32_t *g, uint32_t *b);
 
 /**
  * @brief Rainbow effect task - cycles through colors in rainbow pattern
@@ -69,9 +70,10 @@ void led_strip_fire_task(void *pvParameters);
 
 /**
  * @brief Soft candle effect task - gentle candle-like breathing effect
+ * @brief Soft light effect task - simple soft warm light
  * @param pvParameters Pointer to led_effect_params_t structure
  */
-void led_strip_soft_candle_task(void *pvParameters);
+void led_strip_soft_light_task(void *pvParameters);
 
 #ifdef __cplusplus
 }

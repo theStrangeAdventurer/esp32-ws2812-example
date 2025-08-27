@@ -18,7 +18,7 @@ static const led_effect_info_t available_effects[] = {
     {"Diagonal Flow", led_strip_diagonal_flow_task,
      "Diagonal flowing light effect"},
     {"Fire", led_strip_fire_task, "Fire simulation effect"},
-    {"Soft Candle", led_strip_soft_candle_task, "Soft candle flicker"},
+    {"Soft Light", led_strip_soft_light_task, "Soft light effect"},
     {"Candle", led_strip_candle_task, "Candle flicker effect"},
     {"Rainbow", led_strip_rainbow_task, "Rainbow color cycle"}};
 
@@ -168,7 +168,7 @@ esp_err_t effect_manager_init(effect_manager_t *manager,
   manager->params = params;
   manager->effects = available_effects;
   manager->effect_count = EFFECT_COUNT;
-  manager->current_effect = 2; // Soft Candle
+  manager->current_effect = 2; // Soft Light
   manager->button_task_handle = NULL;
   manager->button_params = NULL;
   manager->rotate_encoder_params_t = NULL;
