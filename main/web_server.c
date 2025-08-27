@@ -13,7 +13,7 @@
 #include <unistd.h> // For close() and write()
 
 #define UPLOAD_BUFFER_SIZE 4096 // Уменьшаем буфер до 4KB
-#define MDNS_HOSTNAME "lamp-00"
+#define MDNS_HOSTNAME "lamp-01"
 #define MIN(a, b) ((a) < (b) ? (a) : (b)) // Добавляем макрос MIN
 #define SCALE_TO_255(x)                                                        \
   ((uint8_t)((x) * 2.55)) // Макрос для перевода 0-100 в 0-255

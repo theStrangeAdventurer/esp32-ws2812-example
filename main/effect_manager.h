@@ -34,8 +34,9 @@ typedef struct {
 // Параметры для задачи обработки кнопки яркости
 typedef struct {
   struct effect_manager_s *manager; // Forward declaration
-  int button_gpio;
-} brightness_button_params_t;
+  int clk_gpio;
+  int dt_gpio;
+} rotate_encoder_params_t;
 
 // Менеджер эффектов
 typedef struct effect_manager_s {
@@ -45,8 +46,8 @@ typedef struct effect_manager_s {
   int current_effect;
   TaskHandle_t button_task_handle;
   button_params_t *button_params;
-  TaskHandle_t brightness_button_task_handle;
-  brightness_button_params_t *brightness_button_params;
+  TaskHandle_t rotate_encoder_task_handle;
+  rotate_encoder_params_t *rotate_encoder_params_t;
 } effect_manager_t;
 
 // Статус эффектов для API
@@ -90,15 +91,8 @@ esp_err_t effect_manager_switch_to(effect_manager_t *manager, int effect_index);
 esp_err_t effect_manager_start_button_handler(effect_manager_t *manager,
                                               int button_gpio);
 
-/**
- * @brief Start brightness button handler task
- * @param manager Pointer to effect manager
- * @param button_gpio GPIO number for brightness button
- * @return ESP_OK on success
- */
-esp_err_t
-effect_manager_start_brightness_button_handler(effect_manager_t *manager,
-                                               int button_gpio);
+esp_err_t effect_manager_rotate_encoder_handler(effect_manager_t *manager,
+                                                int clk_gpio, int dt_gpio);
 
 /**
  * @brief Stop current effect

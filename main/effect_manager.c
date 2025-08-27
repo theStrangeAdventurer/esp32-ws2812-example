@@ -7,6 +7,7 @@
 #include "esp_log.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -55,95 +56,103 @@ static void button_task(void *arg) {
   }
 }
 
-// Обработка кнопки яркости с debouncing
-static void brightness_button_task(void *arg) {
-  brightness_button_params_t *params = (brightness_button_params_t *)arg;
+static void rotate_encoder_task(void *arg) {
+  rotate_encoder_params_t *params = (rotate_encoder_params_t *)arg;
   effect_manager_t *manager = params->manager;
-  int button_gpio = params->button_gpio;
+  int clk_gpio = params->clk_gpio;
+  int dt_gpio = params->dt_gpio;
 
-  bool last_state = true; // Pull-up, поэтому HIGH = не нажата
-  TickType_t last_change = 0;
+  uint8_t last_clk_state = gpio_get_level(clk_gpio);
+  TickType_t last_change = xTaskGetTickCount();
+
   const TickType_t debounce_time = pdMS_TO_TICKS(50);
-  const uint8_t brightness_step = 32; // Шаг изменения яркости (8 уровней: 32,
-                                      // 64, 96, 128, 160, 192, 224, 255)
-  const uint8_t min_brightness = 10;  // Минимальная яркость
+  const uint8_t min_brightness = 0;
+  const uint8_t max_brightness = 255;
+  const uint8_t brightness_step = 10;
 
-  ESP_LOGI(TAG, "Brightness button handler started on GPIO %d", button_gpio);
+  ESP_LOGI(TAG, "KY040_ENCODER started on GPIO clk: %d dt: %d", clk_gpio,
+           dt_gpio);
 
   while (true) {
-    bool current_state = gpio_get_level(button_gpio);
+    uint8_t clk_state = gpio_get_level(clk_gpio);
+    uint8_t dt_state = gpio_get_level(dt_gpio);
+    TickType_t now = xTaskGetTickCount();
 
-    if (current_state != last_state) {
-      TickType_t now = xTaskGetTickCount();
+    // Detect falling edge on CLK (common encoder pattern)
+    if (last_clk_state == 1 && clk_state == 0) {
       if ((now - last_change) > debounce_time) {
-        if (current_state == false) { // Кнопка нажата (LOW)
-          uint8_t current_brightness = effect_manager_get_brightness(manager);
-          uint8_t new_brightness;
+        uint8_t current_brightness = effect_manager_get_brightness(manager);
+        uint8_t new_brightness = current_brightness;
 
-          if (current_brightness >= 255 - brightness_step) {
-            // Достигли максимума, сбрасываем на минимум
-            new_brightness = min_brightness;
-            ESP_LOGI(TAG, "Brightness reset to minimum: %d", new_brightness);
-          } else {
-            // Увеличиваем на шаг
-            new_brightness = current_brightness + brightness_step;
-            if (new_brightness > 255)
-              new_brightness = 255;
-            ESP_LOGI(TAG, "Brightness increased: %d -> %d", current_brightness,
-                     new_brightness);
-          }
-
-          effect_manager_set_brightness(manager, new_brightness);
+        // Check DT state at the moment of CLK falling edge
+        if (dt_state == 1) {
+          // Clockwise rotation
+          new_brightness = (new_brightness + brightness_step > max_brightness)
+                               ? max_brightness
+                               : new_brightness + brightness_step;
+        } else {
+          // Counter-clockwise rotation
+          new_brightness = (new_brightness - (brightness_step * 2) <= 0)
+                               ? min_brightness
+                               : new_brightness - (brightness_step * 2);
         }
+
+        if (current_brightness != new_brightness) {
+          effect_manager_set_brightness(manager, new_brightness);
+          ESP_LOGI(TAG, "Brightness changed: %d -> %d", current_brightness,
+                   new_brightness);
+        }
+
         last_change = now;
       }
-      last_state = current_state;
     }
 
+    last_clk_state = clk_state;
     vTaskDelay(pdMS_TO_TICKS(10));
   }
 }
 
-esp_err_t
-effect_manager_start_brightness_button_handler(effect_manager_t *manager,
-                                               int button_gpio) {
+esp_err_t effect_manager_rotate_encoder_handler(effect_manager_t *manager,
+                                                int clk_gpio, int dt_gpio) {
   if (!manager) {
     ESP_LOGE(TAG, "Invalid manager");
     return ESP_ERR_INVALID_ARG;
   }
 
-  // Настройка GPIO для кнопки яркости
-  gpio_config_t io_conf = {.pin_bit_mask = (1ULL << button_gpio),
-                           .mode = GPIO_MODE_INPUT,
-                           .pull_up_en = GPIO_PULLUP_ENABLE,
-                           .pull_down_en = GPIO_PULLDOWN_DISABLE,
-                           .intr_type = GPIO_INTR_DISABLE};
-  ESP_ERROR_CHECK(gpio_config(&io_conf));
+  gpio_config_t encoder_io_conf = {.pin_bit_mask =
+                                       (1ULL << clk_gpio) | (1ULL << dt_gpio),
+                                   .mode = GPIO_MODE_INPUT,
+                                   .pull_up_en = GPIO_PULLUP_ENABLE,
+                                   .pull_down_en = GPIO_PULLDOWN_DISABLE,
+                                   .intr_type = GPIO_INTR_ANYEDGE};
+  ESP_ERROR_CHECK(gpio_config(&encoder_io_conf));
 
   // Выделить память для параметров задачи
-  brightness_button_params_t *params =
-      malloc(sizeof(brightness_button_params_t));
+  rotate_encoder_params_t *params = malloc(sizeof(rotate_encoder_params_t));
   if (!params) {
-    ESP_LOGE(TAG,
-             "Failed to allocate memory for brightness button task params");
+    ESP_LOGE(
+        TAG,
+        "Failed to allocate memory for rotate_encoder_params_t task params");
     return ESP_ERR_NO_MEM;
   }
 
   params->manager = manager;
-  params->button_gpio = button_gpio;
+  params->clk_gpio = clk_gpio;
+  params->dt_gpio = dt_gpio;
 
   // Создать задачу обработки кнопки яркости
   BaseType_t result =
-      xTaskCreate(brightness_button_task, "brightness_button_handler", 2048,
-                  params, 4, &manager->brightness_button_task_handle);
+      xTaskCreate(rotate_encoder_task, "rotate_encoder_handler", 2048, params,
+                  4, &manager->rotate_encoder_task_handle);
 
   if (result == pdPASS) {
     // Сохранить указатель на параметры для последующей очистки
-    manager->brightness_button_params = params;
-    ESP_LOGI(TAG, "Brightness button handler started on GPIO %d", button_gpio);
+    manager->rotate_encoder_params_t = params;
+    ESP_LOGI(TAG, "Rotate encoder handler started on GPIO: %d, %d", clk_gpio,
+             dt_gpio);
     return ESP_OK;
   } else {
-    ESP_LOGE(TAG, "Failed to create brightness button handler task");
+    ESP_LOGE(TAG, "Failed to create rotate encoder handler task");
     free(params);
     return ESP_FAIL;
   }
@@ -159,22 +168,20 @@ esp_err_t effect_manager_init(effect_manager_t *manager,
   manager->params = params;
   manager->effects = available_effects;
   manager->effect_count = EFFECT_COUNT;
-  manager->current_effect = 0;
+  manager->current_effect = 2; // Soft Candle
   manager->button_task_handle = NULL;
   manager->button_params = NULL;
-  manager->brightness_button_task_handle = NULL;
-  manager->brightness_button_params = NULL;
+  manager->rotate_encoder_params_t = NULL;
 
   // Установить яркость по умолчанию, если не задана
   if (manager->params->brightness == 0) {
-    manager->params->brightness = 128; // 50% яркости по умолчанию
+    manager->params->brightness = 64; // 30% яркости по умолчанию
   }
 
   ESP_LOGI(TAG, "Effect manager initialized with %d effects, brightness: %d",
            EFFECT_COUNT, manager->params->brightness);
 
-  // Запустить первый эффект
-  return effect_manager_switch_to(manager, 0);
+  return effect_manager_switch_to(manager, manager->current_effect);
 }
 
 void effect_manager_stop_current(effect_manager_t *manager) {
@@ -402,10 +409,10 @@ void effect_manager_cleanup(effect_manager_t *manager) {
   }
 
   // Остановить задачу обработки кнопки яркости
-  if (manager->brightness_button_task_handle) {
+  if (manager->rotate_encoder_task_handle) {
     ESP_LOGI(TAG, "Stopping brightness button handler task");
-    vTaskDelete(manager->brightness_button_task_handle);
-    manager->brightness_button_task_handle = NULL;
+    vTaskDelete(manager->rotate_encoder_task_handle);
+    manager->rotate_encoder_task_handle = NULL;
   }
 
   // Освободить память параметров кнопки
@@ -416,10 +423,10 @@ void effect_manager_cleanup(effect_manager_t *manager) {
   }
 
   // Освободить память параметров кнопки яркости
-  if (manager->brightness_button_params) {
+  if (manager->rotate_encoder_params_t) {
     ESP_LOGI(TAG, "Freeing brightness button task parameters");
-    free(manager->brightness_button_params);
-    manager->brightness_button_params = NULL;
+    free(manager->rotate_encoder_params_t);
+    manager->rotate_encoder_params_t = NULL;
   }
 
   // Очистить остальные поля

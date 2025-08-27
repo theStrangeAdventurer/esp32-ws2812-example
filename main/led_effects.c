@@ -3,14 +3,11 @@
  */
 
 #include "led_effects.h"
-#include "esp_log.h"
 #include "esp_random.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <math.h>
 #include <string.h>
-
-static const char *TAG = "led_effects";
 
 void led_strip_hsv2rgb(uint32_t h, uint32_t s, uint32_t v, uint32_t *r,
                        uint32_t *g, uint32_t *b) {
