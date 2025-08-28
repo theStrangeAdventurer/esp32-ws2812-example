@@ -16,7 +16,11 @@ extern "C" {
 #endif
 
 // Configuration constants
-#define LED_NUMBERS 64
+#define LED_NUMBERS_COL 8
+#define LED_NUMBERS_ROW 8
+#define LED_NUMBERS (LED_NUMBERS_COL * LED_NUMBERS_ROW)
+#define LED_SHOULD_ROUND 1 // Will round active leds to pretend a circle
+
 #define EXAMPLE_CHASE_SPEED_MS 10
 
 // Effect parameters structure
@@ -30,20 +34,6 @@ typedef struct {
   size_t pixel_buffer_size;  // Size of pixel buffer
   uint8_t brightness;        // Brightness level (1-255)
 } led_effect_params_t;
-
-/**
- * @brief Convert HSV color space to RGB color space
- *
- * @param h Hue (0-360)
- * @param s Saturation (0-100)
- * @param v Value/Brightness (0-100)
- * @param r Red output (0-255)
- * @param g Green output (0-255)
- * @param b Blue output (0-255)
- */
-void led_strip_hsv2rgb(uint32_t h, uint32_t s, uint32_t v, uint32_t *r,
-                       uint32_t *g, uint32_t *b);
-
 /**
  * @brief Rainbow effect task - cycles through colors in rainbow pattern
  * @param pvParameters Pointer to led_effect_params_t structure

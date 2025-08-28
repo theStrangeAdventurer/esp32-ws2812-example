@@ -40,3 +40,20 @@ web
 │   └── utils.ts // Что-то вынес сюда чтобы не раздувать точку входа
 └── tsconfig.json
 
+Что делать если просят круглить углы в эффекте? 
+
+- Нужно применить следующий код 
+
+
+#if LED_SHOULD_ROUND == 1
+      if (is_corner_led(i)) {
+        // Disable corner LEDs
+        params->led_strip_pixels[i * 3 + 0] = 0;
+        params->led_strip_pixels[i * 3 + 1] = 0;
+        params->led_strip_pixels[i * 3 + 2] = 0;
+        continue;
+      }
+#endif
+
+Где i - Это текущий индекс пикселя
+

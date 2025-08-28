@@ -9,8 +9,28 @@
 #include <math.h>
 #include <string.h>
 
-void led_strip_hsv2rgb(uint32_t h, uint32_t s, uint32_t v, uint32_t *r,
-                       uint32_t *g, uint32_t *b) {
+#if LED_SHOULD_ROUND == 1
+// Function to check if LED should be disabled for circular rounding
+static bool is_corner_led(int led_index) {
+  // Calculate row and column position in the matrix
+  int row = led_index / LED_NUMBERS_COL;
+  int col = led_index % LED_NUMBERS_COL;
+
+  // Calculate distance from center for each LED
+  float center_x = (LED_NUMBERS_COL - 1) / 2.0f;
+  float center_y = (LED_NUMBERS_ROW - 1) / 2.0f;
+
+  float distance = sqrtf(powf(col - center_x, 2) + powf(row - center_y, 2));
+  float max_radius = sqrtf(powf(center_x, 2) + powf(center_y, 2));
+
+  // Disable LEDs that are outside the circular area
+  // Adjust the 0.9 factor to control how "round" the corners are
+  return distance > max_radius * 0.9f;
+}
+#endif
+
+static void led_strip_hsv2rgb(uint32_t h, uint32_t s, uint32_t v, uint32_t *r,
+                              uint32_t *g, uint32_t *b) {
   h %= 360; // h -> [0,360]
   uint32_t rgb_max = (v * 255) / 100;
   uint32_t rgb_min = (rgb_max * (100 - s)) / 100;
@@ -63,6 +83,17 @@ void led_strip_rainbow_task(void *pvParameters) {
 
   while (params->running) {
     for (int j = 0; j < LED_NUMBERS; j++) {
+
+#if LED_SHOULD_ROUND == 1
+      if (is_corner_led(j)) {
+        // Disable corner LEDs
+        params->led_strip_pixels[j * 3 + 0] = 0;
+        params->led_strip_pixels[j * 3 + 1] = 0;
+        params->led_strip_pixels[j * 3 + 2] = 0;
+        continue;
+      }
+#endif
+
       // Modified calculation to include moving offset
       hue = (j * 360 / LED_NUMBERS + start_rgb) % 360;
       led_strip_hsv2rgb(hue, 100, 100, &red, &green, &blue);
@@ -101,6 +132,17 @@ void led_strip_candle_task(void *pvParameters) {
 
   // Инициализация начальных значений с более широким диапазоном
   for (int i = 0; i < LED_NUMBERS; i++) {
+
+#if LED_SHOULD_ROUND == 1
+    if (is_corner_led(i)) {
+      // Disable corner LEDs
+      params->led_strip_pixels[i * 3 + 0] = 0;
+      params->led_strip_pixels[i * 3 + 1] = 0;
+      params->led_strip_pixels[i * 3 + 2] = 0;
+      continue;
+    }
+#endif
+
     led_brightness[i] = 30 + (esp_random() % 50); // 30-79%
     led_target[i] = 30 + (esp_random() % 50);
     led_hue[i] = 5 + (esp_random() % 20); // 5-24° (оранжево-красный)
@@ -192,6 +234,17 @@ void led_strip_diagonal_flow_task(void *pvParameters) {
 
   while (params->running) {
     for (int j = 0; j < LED_NUMBERS; j++) {
+
+#if LED_SHOULD_ROUND == 1
+      if (is_corner_led(j)) {
+        // Disable corner LEDs
+        params->led_strip_pixels[j * 3 + 0] = 0;
+        params->led_strip_pixels[j * 3 + 1] = 0;
+        params->led_strip_pixels[j * 3 + 2] = 0;
+        continue;
+      }
+#endif
+
       int group = (j == 0 || j == 2) ? 0 : 1;
       float led_phase = phase + (group * M_PI);
 
@@ -246,86 +299,103 @@ void led_strip_diagonal_flow_task(void *pvParameters) {
 
 void led_strip_fire_task(void *pvParameters) {
   led_effect_params_t *params = (led_effect_params_t *)pvParameters;
+
+  // Heat array for fire simulation (2D matrix)
+  static uint8_t heat[LED_NUMBERS_ROW][LED_NUMBERS_COL];
   uint32_t red, green, blue;
 
-  // Каждый светодиод - отдельный "язык пламени"
-  float flame_phase[4];
-  float flame_speed[4];
-  uint32_t next_flicker[4];
-
-  // Инициализация каждого "языка"
-  for (int i = 0; i < 4; i++) {
-    flame_phase[i] = (esp_random() % 628) / 100.0f;
-    flame_speed[i] = 0.1f + (esp_random() % 20) / 100.0f;
-    next_flicker[i] = esp_random() % 50;
+  // Initialize heat array
+  for (int row = 0; row < LED_NUMBERS_ROW; row++) {
+    for (int col = 0; col < LED_NUMBERS_COL; col++) {
+      heat[row][col] = 0;
+    }
   }
 
   while (params->running) {
-    for (int j = 0; j < 4; j++) {
-      // Базовое "дыхание" костра
-      float base_flame = (sin(flame_phase[j]) + 1.0f) / 2.0f; // 0-1
-
-      // Случайные резкие вспышки (более ограниченные)
-      float intensity = base_flame * 0.5f + 0.3f; // 0.3-0.8 базовый диапазон
-
-      if (next_flicker[j] == 0) {
-        // Более умеренные вспышки
-        intensity += (esp_random() % 20) / 100.0f; // +0-0.2 вместо 0.3
-        next_flicker[j] = 10 + esp_random() % 40;
-      } else {
-        next_flicker[j]--;
+    // Step 1: Cool down every cell
+    for (int row = 0; row < LED_NUMBERS_ROW; row++) {
+      for (int col = 0; col < LED_NUMBERS_COL; col++) {
+        uint8_t cooling = (esp_random() % 10) + 5; // 5-14
+        if (cooling > heat[row][col]) {
+          heat[row][col] = 0;
+        } else {
+          heat[row][col] -= cooling;
+        }
       }
+    }
 
-      // Иногда почти гаснем
-      if (esp_random() % 200 == 0) {
-        intensity *= 0.2f;
+    // Step 2: Heat propagation (более простое и надежное)
+    for (int row = LED_NUMBERS_ROW - 1; row > 0; row--) {
+      for (int col = 0; col < LED_NUMBERS_COL; col++) {
+        // Простое распространение: 80% от нижнего + 20% от текущего
+        if (row > 0) {
+          heat[row][col] = (heat[row - 1][col] * 8 + heat[row][col] * 2) / 10;
+        }
       }
+    }
 
-      // Строго ограничиваем интенсивность
-      if (intensity > 0.9f)
-        intensity = 0.9f; // Не даем достигать 1.0
-      if (intensity < 0.1f)
-        intensity = 0.1f;
+    // Step 3: Add new sparks at the bottom row
+    for (int col = 0; col < LED_NUMBERS_COL; col++) {
+      if (esp_random() % 10 < 5) {                 // 50% chance per bottom cell
+        uint8_t spark = 180 + (esp_random() % 76); // 180-255
+        if (spark > heat[0][col]) {
+          heat[0][col] = spark;
+        }
+      }
+    }
 
-      // Улучшенная огненная палитра без белого и зеленого
-      if (intensity < 0.4f) {
-        // Темно-красный
-        red = 80 + 120 * (intensity / 0.4f); // 80-200
-        green = 0;
+    // Step 4: ЧИСТАЯ ОГНЕННАЯ ПАЛИТРА БЕЗ СИНЕГО
+    for (int i = 0; i < LED_NUMBERS; i++) {
+      int row = i / LED_NUMBERS_COL;
+      int col = i % LED_NUMBERS_COL;
+
+#if LED_SHOULD_ROUND == 1
+      if (is_corner_led(i)) {
+        // Disable corner LEDs
+        params->led_strip_pixels[i * 3 + 0] = 0;
+        params->led_strip_pixels[i * 3 + 1] = 0;
+        params->led_strip_pixels[i * 3 + 2] = 0;
+        continue;
+      }
+#endif
+
+      // Чистая огненная палитра: черный → красный → оранжевый
+      uint8_t heat_val = heat[row][col];
+
+      if (heat_val < 85) {    // Черный → темно-красный
+        red = heat_val * 3;   // 0-255
+        green = heat_val / 4; // 0-21 (очень мало зеленого)
         blue = 0;
-      } else if (intensity < 0.7f) {
-        // Красный → оранжевый (ограниченный green)
-        red = 200 + 55 * ((intensity - 0.4f) / 0.3f); // 200-255
-        green = 60 * ((intensity - 0.4f) / 0.3f);     // 0-60 (не 165!)
-        blue = 0;
-      } else {
-        // Оранжевый → желтоватый (без белого)
+      } else if (heat_val < 170) { // Темно-красный → ярко-красный
         red = 255;
-        green = 60 + 40 * ((intensity - 0.7f) / 0.3f); // 60-100 (не 255!)
-        blue = 0; // Никакого синего компонента
+        green = (heat_val - 85) * 1; // 0-170 (умеренный зеленый)
+        blue = 0;
+      } else { // Красный → оранжевый → желтый
+        red = 255;
+        green = 140 + (heat_val - 170) / 2; // 170-255
+        blue = 0;
       }
 
-      // Применяем общую яркость из параметров
+      // Применяем общую яркость
       red = (red * params->brightness) / 255;
       green = (green * params->brightness) / 255;
       blue = (blue * params->brightness) / 255;
 
-      params->led_strip_pixels[j * 3 + 0] = green;
-      params->led_strip_pixels[j * 3 + 1] = red;
-      params->led_strip_pixels[j * 3 + 2] = blue;
-
-      // Обновляем фазу дыхания
-      flame_phase[j] += flame_speed[j];
-      if (flame_phase[j] > M_PI * 2)
-        flame_phase[j] -= M_PI * 2;
+      // Правильный порядок GRB
+      params->led_strip_pixels[i * 3 + 0] = green;
+      params->led_strip_pixels[i * 3 + 1] = red;
+      params->led_strip_pixels[i * 3 + 2] = blue;
     }
 
+    // Send to LEDs
     ESP_ERROR_CHECK(rmt_transmit(
         params->led_chan, params->led_encoder, params->led_strip_pixels,
         params->pixel_buffer_size, &params->tx_config));
     ESP_ERROR_CHECK(rmt_tx_wait_all_done(params->led_chan, pdMS_TO_TICKS(100)));
-    vTaskDelay(pdMS_TO_TICKS(60)); // ~16 FPS
+
+    vTaskDelay(pdMS_TO_TICKS(70)); // ~14 FPS
   }
+
   params->task_handle = NULL;
   vTaskDelete(NULL);
 }
@@ -340,6 +410,16 @@ void led_strip_soft_light_task(void *pvParameters) {
       red = 255;
       green = 115;
       blue = 23;
+
+#if LED_SHOULD_ROUND == 1
+      if (is_corner_led(i)) {
+        // Disable corner LEDs
+        params->led_strip_pixels[i * 3 + 0] = 0;
+        params->led_strip_pixels[i * 3 + 1] = 0;
+        params->led_strip_pixels[i * 3 + 2] = 0;
+        continue;
+      }
+#endif
 
       if (params->brightness <= 1) {
         red = green = blue = 0;
