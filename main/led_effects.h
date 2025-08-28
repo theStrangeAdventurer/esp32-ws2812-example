@@ -16,7 +16,7 @@ extern "C" {
 #endif
 
 // Configuration constants
-#define LED_NUMBERS 4
+#define LED_NUMBERS 64
 #define EXAMPLE_CHASE_SPEED_MS 10
 
 // Effect parameters structure
