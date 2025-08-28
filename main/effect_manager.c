@@ -19,8 +19,7 @@ static const led_effect_info_t available_effects[] = {
      "Diagonal flowing light effect"},
     {"Fire", led_strip_fire_task, "Fire simulation effect"},
     {"Soft Light", led_strip_soft_light_task, "Soft light effect"},
-    {"Candle", led_strip_candle_task, "Candle flicker effect"},
-    {"Rainbow", led_strip_rainbow_task, "Rainbow color cycle"}};
+};
 
 static const int EFFECT_COUNT =
     sizeof(available_effects) / sizeof(available_effects[0]);

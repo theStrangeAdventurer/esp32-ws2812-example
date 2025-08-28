@@ -34,17 +34,6 @@ typedef struct {
   size_t pixel_buffer_size;  // Size of pixel buffer
   uint8_t brightness;        // Brightness level (1-255)
 } led_effect_params_t;
-/**
- * @brief Rainbow effect task - cycles through colors in rainbow pattern
- * @param pvParameters Pointer to led_effect_params_t structure
- */
-void led_strip_rainbow_task(void *pvParameters);
-
-/**
- * @brief Candle effect task - simulates flickering candle flame
- * @param pvParameters Pointer to led_effect_params_t structure
- */
-void led_strip_candle_task(void *pvParameters);
 
 /**
  * @brief Diagonal flow effect task - alternating color breathing effect
