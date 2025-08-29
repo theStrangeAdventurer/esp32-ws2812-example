@@ -15,10 +15,11 @@
 static const char *TAG = "effect_manager";
 // Определение всех доступных эффектов
 static const led_effect_info_t available_effects[] = {
+    {"Power Off", led_strip_power_off_task, ""},
+    {"Soft Light", led_strip_soft_light_task, "Soft light effect"},
+    {"Fire", led_strip_fire_task, "Fire simulation effect"},
     {"Diagonal Flow", led_strip_diagonal_flow_task,
      "Diagonal flowing light effect"},
-    {"Fire", led_strip_fire_task, "Fire simulation effect"},
-    {"Soft Light", led_strip_soft_light_task, "Soft light effect"},
 };
 
 static const int EFFECT_COUNT =
@@ -167,7 +168,7 @@ esp_err_t effect_manager_init(effect_manager_t *manager,
   manager->params = params;
   manager->effects = available_effects;
   manager->effect_count = EFFECT_COUNT;
-  manager->current_effect = 2; // Soft Light
+  manager->current_effect = 0; // Power Off
   manager->button_task_handle = NULL;
   manager->button_params = NULL;
   manager->rotate_encoder_params_t = NULL;

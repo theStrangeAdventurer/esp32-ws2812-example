@@ -75,28 +75,70 @@ static void led_strip_hsv2rgb(uint32_t h, uint32_t s, uint32_t v, uint32_t *r,
   }
 }
 
+void led_strip_power_off_task(void *pvParameters) {
+
+  led_effect_params_t *params = (led_effect_params_t *)pvParameters;
+
+  while (params->running) {
+    for (int j = 0; j < LED_NUMBERS; j++) {
+      // Отключаем угловые светодиоды
+      params->led_strip_pixels[j * 3 + 0] = 0;
+      params->led_strip_pixels[j * 3 + 1] = 0;
+      params->led_strip_pixels[j * 3 + 2] = 0;
+      continue;
+    }
+    ESP_ERROR_CHECK(rmt_transmit(
+        params->led_chan, params->led_encoder, params->led_strip_pixels,
+        params->pixel_buffer_size, &params->tx_config));
+    ESP_ERROR_CHECK(rmt_tx_wait_all_done(params->led_chan, pdMS_TO_TICKS(100)));
+
+    vTaskDelay(pdMS_TO_TICKS(100));
+  }
+
+  params->task_handle = NULL;
+  vTaskDelete(NULL);
+}
+
 void led_strip_diagonal_flow_task(void *pvParameters) {
   led_effect_params_t *params = (led_effect_params_t *)pvParameters;
   uint32_t red, green, blue;
 
-  // Цветовая палитра: фиолетовый, оранжевый (без синего)
-  const uint16_t colors[2] = {280, 20}; // фиолетовый, более оранжевый желтый
+  // Цвета: фиолетовый фон, желтый светлячек
+  const uint16_t purple_hue = 280;
+  const uint16_t yellow_hue = 20;
   const uint8_t saturation = 100;
-  const uint8_t max_brightness = 80;
+  const uint8_t background_brightness = 30;
+  const uint8_t firefly_max_brightness = 100;
 
-  float phase = 0;
-  const float speed = 0.05f;
+  float firefly_position = 0.0f;
+  const float firefly_speed = 0.1f;
+  const float firefly_size = 3.0f; // размер светлячка в LED
 
-  // Состояние для отслеживания смены цветов
-  static uint8_t current_color_group[2] = {0, 1}; // цвета для каждой группы
-  static bool fade_detected[2] = {false, false};  // флаги обнаружения угасания
+  // Эффект мерцания светлячка
+  float flicker_phase = 0.0f;
+  const float flicker_speed = 0.2f;
 
   while (params->running) {
-    for (int j = 0; j < LED_NUMBERS; j++) {
+    // Обновляем позицию светлячка
+    firefly_position += firefly_speed;
+    if (firefly_position >= LED_NUMBERS + firefly_size) {
+      firefly_position = -firefly_size;
+    }
 
+    // Обновляем мерцание
+    flicker_phase += flicker_speed;
+    if (flicker_phase >= M_PI * 2) {
+      flicker_phase = 0;
+    }
+
+    // Яркость светлячка с мерцанием
+    float flicker = (sin(flicker_phase) + 1.0f) / 2.0f;
+    uint8_t firefly_brightness = (uint8_t)(firefly_max_brightness * flicker);
+
+    for (int j = 0; j < LED_NUMBERS; j++) {
 #if LED_SHOULD_ROUND == 1
       if (is_corner_led(j, 0.95f)) {
-        // Disable corner LEDs
+        // Отключаем угловые светодиоды
         params->led_strip_pixels[j * 3 + 0] = 0;
         params->led_strip_pixels[j * 3 + 1] = 0;
         params->led_strip_pixels[j * 3 + 2] = 0;
@@ -104,33 +146,24 @@ void led_strip_diagonal_flow_task(void *pvParameters) {
       }
 #endif
 
-      int group = (j == 0 || j == 2) ? 0 : 1;
-      float led_phase = phase + (group * M_PI);
+      // Определяем расстояние до светлячка
+      float distance = fabsf(j - firefly_position);
 
-      // Плавная волна дыхания от 0 до 1 с более выраженным угасанием
-      float breath_wave = (sin(led_phase) + 1.0f) / 2.0f;
-      breath_wave = breath_wave * breath_wave;
+      if (distance <= firefly_size) {
+        // Светлячек - плавное затухание от центра
+        float intensity = 1.0f - (distance / firefly_size);
+        intensity = intensity * intensity; // квадратичное затухание
 
-      uint8_t brightness = (uint8_t)(max_brightness * breath_wave);
-      if (brightness < 5)
-        brightness = 0;
-
-      // Детекция полного угасания для смены цвета
-      if (brightness == 0 && !fade_detected[group]) {
-        // Момент полного угасания - меняем цвет группы
-        current_color_group[group] = 1 - current_color_group[group];
-        fade_detected[group] = true;
-      } else if (brightness > 10) {
-        // Сброс флага когда яркость поднимается
-        fade_detected[group] = false;
+        uint8_t brightness = (uint8_t)(firefly_brightness * intensity);
+        led_strip_hsv2rgb(yellow_hue, saturation, brightness, &red, &green,
+                          &blue);
+      } else {
+        // Фон - фиолетовый
+        led_strip_hsv2rgb(purple_hue, saturation, background_brightness, &red,
+                          &green, &blue);
       }
 
-      uint16_t current_hue = colors[current_color_group[group]];
-
-      led_strip_hsv2rgb(current_hue, saturation, brightness, &red, &green,
-                        &blue);
-
-      // Применяем общую яркость из параметров
+      // Применяем общую яркость
       red = (red * params->brightness) / 255;
       green = (green * params->brightness) / 255;
       blue = (blue * params->brightness) / 255;
@@ -145,13 +178,9 @@ void led_strip_diagonal_flow_task(void *pvParameters) {
         params->pixel_buffer_size, &params->tx_config));
     ESP_ERROR_CHECK(rmt_tx_wait_all_done(params->led_chan, pdMS_TO_TICKS(100)));
 
-    phase += speed;
-    if (phase >= M_PI * 4) {
-      phase = 0;
-    }
-
     vTaskDelay(pdMS_TO_TICKS(40));
   }
+
   params->task_handle = NULL;
   vTaskDelete(NULL);
 }
@@ -172,7 +201,7 @@ void led_strip_fire_task(void *pvParameters) {
 
   float_t threshold = 0.1f; // Начальное значение
   const float_t target_threshold = 0.8f;
-  const float_t threshold_step = (target_threshold - threshold) / (100 / 5);
+  const float_t threshold_step = (target_threshold - threshold) / (10 / 5);
   while (params->running) {
 
     if (threshold < target_threshold) {
@@ -219,7 +248,7 @@ void led_strip_fire_task(void *pvParameters) {
       int col = i % LED_NUMBERS_COL;
 
 #if LED_SHOULD_ROUND == 1
-      if (is_corner_led(i, 0.95f)) {
+      if (is_corner_led(i, threshold)) {
         // Disable corner LEDs
         params->led_strip_pixels[i * 3 + 0] = 0;
         params->led_strip_pixels[i * 3 + 1] = 0;
@@ -262,7 +291,7 @@ void led_strip_fire_task(void *pvParameters) {
         params->pixel_buffer_size, &params->tx_config));
     ESP_ERROR_CHECK(rmt_tx_wait_all_done(params->led_chan, pdMS_TO_TICKS(100)));
 
-    vTaskDelay(pdMS_TO_TICKS(70)); // ~14 FPS
+    vTaskDelay(pdMS_TO_TICKS(40));
   }
 
   params->task_handle = NULL;

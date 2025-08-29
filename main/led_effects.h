@@ -41,6 +41,8 @@ typedef struct {
  */
 void led_strip_diagonal_flow_task(void *pvParameters);
 
+void led_strip_power_off_task(void *pvParameters);
+
 /**
  * @brief Fire effect task - simulates fire/flame with red-orange colors
  * @param pvParameters Pointer to led_effect_params_t structure
