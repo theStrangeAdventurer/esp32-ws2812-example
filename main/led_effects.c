@@ -103,14 +103,16 @@ void led_strip_diagonal_flow_task(void *pvParameters) {
   led_effect_params_t *params = (led_effect_params_t *)pvParameters;
   uint32_t red, green, blue;
 
-  // Цвета: фиолетовый фон, желтый светлячек
-  const uint16_t purple_hue = 280;
+  // u0426u0432u0435u0442u0430: u0447u0435u0440u043du044bu0439 u0444u043eu043d,
+  // u0436u0435u043bu0442u044bu0439
+  // u0441u0432u0435u0442u043bu044fu0447u0435u043a
   const uint16_t yellow_hue = 20;
   const uint8_t saturation = 100;
-  const uint8_t background_brightness = 30;
   const uint8_t firefly_max_brightness = 100;
 
-  float firefly_position = 0.0f;
+  // 2D position for firefly
+  float firefly_x = 0.0f;
+  float firefly_y = LED_NUMBERS_ROW / 2.0f;
   const float firefly_speed = 0.1f;
   const float firefly_size = 3.0f; // размер светлячка в LED
 
@@ -120,9 +122,12 @@ void led_strip_diagonal_flow_task(void *pvParameters) {
 
   while (params->running) {
     // Обновляем позицию светлячка
-    firefly_position += firefly_speed;
-    if (firefly_position >= LED_NUMBERS + firefly_size) {
-      firefly_position = -firefly_size;
+    // u041eu0431u043du043eu0432u043bu044fu0435u043c
+    // u043fu043eu0437u0438u0446u0438u044e
+    // u0441u0432u0435u0442u043bu044fu0447u043au0430 u0432 2D
+    firefly_x += firefly_speed;
+    if (firefly_x >= LED_NUMBERS_COL + firefly_size) {
+      firefly_x = -firefly_size;
     }
 
     // Обновляем мерцание
@@ -147,7 +152,16 @@ void led_strip_diagonal_flow_task(void *pvParameters) {
 #endif
 
       // Определяем расстояние до светлячка
-      float distance = fabsf(j - firefly_position);
+      // u041fu0435u0440u0435u0432u043eu0434u0438u043c 1D
+      // u0438u043du0434u0435u043au0441 u0432 2D
+      // u043au043eu043eu0440u0434u0438u043du0430u0442u044b
+      int row = j / LED_NUMBERS_COL;
+      int col = j % LED_NUMBERS_COL;
+
+      // u0420u0430u0441u0441u0447u0438u0442u044bu0432u0430u0435u043c
+      // u0440u0430u0441u0441u0442u043eu044fu043du0438u0435 u0432 2D
+      float distance =
+          sqrtf(powf(col - firefly_x, 2) + powf(row - firefly_y, 2));
 
       if (distance <= firefly_size) {
         // Светлячек - плавное затухание от центра
@@ -158,9 +172,10 @@ void led_strip_diagonal_flow_task(void *pvParameters) {
         led_strip_hsv2rgb(yellow_hue, saturation, brightness, &red, &green,
                           &blue);
       } else {
-        // Фон - фиолетовый
-        led_strip_hsv2rgb(purple_hue, saturation, background_brightness, &red,
-                          &green, &blue);
+        // Фон - черный
+        red = 0;
+        green = 0;
+        blue = 0;
       }
 
       // Применяем общую яркость

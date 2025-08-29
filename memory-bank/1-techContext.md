@@ -57,3 +57,13 @@ web
 
 Где i - Это текущий индекс пикселя
 
+Где указана информация по конфигурации led матрицы? 
+в заголовочном файле  
+main/led_effects.h
+
+в макросах
+// Configuration constants
+#define LED_NUMBERS_COL 8
+#define LED_NUMBERS_ROW 8
+#define LED_NUMBERS (LED_NUMBERS_COL * LED_NUMBERS_ROW)
+
