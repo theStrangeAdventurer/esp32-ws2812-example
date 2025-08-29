@@ -75,6 +75,8 @@ static void led_strip_hsv2rgb(uint32_t h, uint32_t s, uint32_t v, uint32_t *r,
   }
 }
 
+static float min(float a, float b) { return a < b ? a : b; }
+
 void led_strip_power_off_task(void *pvParameters) {
 
   led_effect_params_t *params = (led_effect_params_t *)pvParameters;
@@ -103,9 +105,7 @@ void led_strip_diagonal_flow_task(void *pvParameters) {
   led_effect_params_t *params = (led_effect_params_t *)pvParameters;
   uint32_t red, green, blue;
 
-  // u0426u0432u0435u0442u0430: u0447u0435u0440u043du044bu0439 u0444u043eu043d,
-  // u0436u0435u043bu0442u044bu0439
-  // u0441u0432u0435u0442u043bu044fu0447u0435u043a
+  // Цвета: черный фон, желтый светлячек
   const uint16_t yellow_hue = 20;
   const uint8_t saturation = 100;
   const uint8_t firefly_max_brightness = 100;
@@ -113,22 +113,89 @@ void led_strip_diagonal_flow_task(void *pvParameters) {
   // 2D position for firefly
   float firefly_x = 0.0f;
   float firefly_y = LED_NUMBERS_ROW / 2.0f;
-  const float firefly_speed = 0.1f;
-  const float firefly_size = 3.0f; // размер светлячка в LED
+  float firefly_size = 3.0f;           // базовый размер светлячка в LED
+  const float firefly_size_min = 1.5f; // минимальный размер
+  const float firefly_size_max = 3.5f; // максимальный размер
+  float size_phase = 0.0f;
+  const float size_change_speed = 0.03f; // скорость изменения размера
+  float movement_phase = 0.0f;
+  const float movement_speed = 0.05f;
+  const float center_x = (LED_NUMBERS_COL - 1) / 2.0f;
+  const float center_y = (LED_NUMBERS_ROW - 1) / 2.0f;
+
+  const float figure8_width = LED_NUMBERS_COL * 0.8f;
+  const float figure8_height = LED_NUMBERS_ROW * 0.8f;
+  // Параметры для более естественного мерцания
+  float random_flicker_timer = 0.0f;
+  const float random_flicker_interval_min = 0.5f;
+  const float random_flicker_interval_max = 3.0f;
+  float next_random_flicker = random_flicker_interval_min;
+  bool is_random_dim = false;
 
   // Эффект мерцания светлячка
   float flicker_phase = 0.0f;
-  const float flicker_speed = 0.2f;
+  float flicker_speed = 0.2f;
+  // Параметры для вариации скорости мерцания
+  float flicker_variation = 0.0f;
+  float flicker_variation_phase = 0.0f;
+  const float flicker_variation_speed =
+      0.014f; // Медленнее чем основное мерцание
+  // Микро-мерцания
+  float micro_flicker = 0.0f;
+  float micro_flicker_phase = 0.0f;
+  const float micro_flicker_speed = 0.8f;   // Быстрые микро-мерцания
+  const float micro_flicker_amount = 0.15f; // Интенсивность микро-мерцаний
 
   while (params->running) {
-    // Обновляем позицию светлячка
-    // u041eu0431u043du043eu0432u043bu044fu0435u043c
-    // u043fu043eu0437u0438u0446u0438u044e
-    // u0441u0432u0435u0442u043bu044fu0447u043au0430 u0432 2D
-    firefly_x += firefly_speed;
-    if (firefly_x >= LED_NUMBERS_COL + firefly_size) {
-      firefly_x = -firefly_size;
+    // Обновляем фазу движения
+    movement_phase += movement_speed;
+    if (movement_phase > 2 * M_PI) {
+      movement_phase -= 2 * M_PI;
     }
+
+    // Обновляем фазу изменения размера
+    size_phase += size_change_speed;
+    if (size_phase > 2 * M_PI) {
+      size_phase -= 2 * M_PI;
+    }
+
+    firefly_size =
+        ((firefly_size_max - firefly_size_min) / 2) * (sin(size_phase) + 1.0f) +
+        firefly_size_min;
+
+    // Обновляем случайное мерцание
+    random_flicker_timer += 0.02f;
+    if (random_flicker_timer >= next_random_flicker) {
+      random_flicker_timer = 0.0f;
+      is_random_dim = !is_random_dim;
+
+      // Следующий интервал мерцания случайный
+      float random_factor = (float)esp_random() / UINT32_MAX;
+      next_random_flicker = random_flicker_interval_min +
+                            random_factor * (random_flicker_interval_max -
+                                             random_flicker_interval_min);
+    }
+
+    flicker_variation_phase += flicker_variation_speed;
+    if (flicker_variation_phase > 2 * M_PI) {
+      flicker_variation_phase -= 2 * M_PI;
+    }
+    flicker_variation =
+        (sin(flicker_variation_phase) + 1.0f) / 2.0f; // 0.0 - 1.0
+    flicker_speed = 0.1f + flicker_variation * 0.2f;  // 0.1 - 0.3
+
+    micro_flicker_phase += micro_flicker_speed;
+    if (micro_flicker_phase > 2 * M_PI) {
+      micro_flicker_phase -= 2 * M_PI;
+    }
+    micro_flicker = sin(micro_flicker_phase) * micro_flicker_amount;
+
+    // u0412u043eu0441u044cu043cu0435u0440u043au0430 -
+    // u0435u0434u0438u043du0441u0442u0432u0435u043du043du044bu0439
+    // u0440u0435u0436u0438u043c u0434u0432u0438u0436u0435u043du0438u044f
+    firefly_x = center_x + (figure8_width / 2) * sin(movement_phase);
+    firefly_y = center_y + (figure8_height / 2) * sin(movement_phase) *
+                               cos(movement_phase);
 
     // Обновляем мерцание
     flicker_phase += flicker_speed;
@@ -138,6 +205,18 @@ void led_strip_diagonal_flow_task(void *pvParameters) {
 
     // Яркость светлячка с мерцанием
     float flicker = (sin(flicker_phase) + 1.0f) / 2.0f;
+
+    // Добавляем микро-мерцания для большей естественности
+    flicker += micro_flicker;
+    if (flicker < 0.3f)
+      flicker = 0.3f; // Минимальная яркость
+    if (flicker > 1.0f)
+      flicker = 1.0f; // Максимальная яркость
+
+    if (is_random_dim) {
+      flicker *= 0.5f; // Dim by 50% during random flickering
+    }
+
     uint8_t firefly_brightness = (uint8_t)(firefly_max_brightness * flicker);
 
     for (int j = 0; j < LED_NUMBERS; j++) {
@@ -152,14 +231,11 @@ void led_strip_diagonal_flow_task(void *pvParameters) {
 #endif
 
       // Определяем расстояние до светлячка
-      // u041fu0435u0440u0435u0432u043eu0434u0438u043c 1D
-      // u0438u043du0434u0435u043au0441 u0432 2D
-      // u043au043eu043eu0440u0434u0438u043du0430u0442u044b
+      // Переводим 1D индекс в 2D координаты
       int row = j / LED_NUMBERS_COL;
       int col = j % LED_NUMBERS_COL;
 
-      // u0420u0430u0441u0441u0447u0438u0442u044bu0432u0430u0435u043c
-      // u0440u0430u0441u0441u0442u043eu044fu043du0438u0435 u0432 2D
+      // Рассчитываем расстояние в 2D
       float distance =
           sqrtf(powf(col - firefly_x, 2) + powf(row - firefly_y, 2));
 
@@ -193,7 +269,8 @@ void led_strip_diagonal_flow_task(void *pvParameters) {
         params->pixel_buffer_size, &params->tx_config));
     ESP_ERROR_CHECK(rmt_tx_wait_all_done(params->led_chan, pdMS_TO_TICKS(100)));
 
-    vTaskDelay(pdMS_TO_TICKS(40));
+    // Уменьшаем задержку для увеличения FPS
+    vTaskDelay(pdMS_TO_TICKS(45));
   }
 
   params->task_handle = NULL;
