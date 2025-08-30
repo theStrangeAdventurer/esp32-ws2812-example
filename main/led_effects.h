@@ -35,26 +35,10 @@ typedef struct {
   uint8_t brightness;        // Brightness level (1-255)
 } led_effect_params_t;
 
-/**
- * @brief Diagonal flow effect task - alternating color breathing effect
- * @param pvParameters Pointer to led_effect_params_t structure
- */
-void led_strip_diagonal_flow_task(void *pvParameters);
-
-void led_strip_power_off_task(void *pvParameters);
-
-/**
- * @brief Fire effect task - simulates fire/flame with red-orange colors
- * @param pvParameters Pointer to led_effect_params_t structure
- */
+void led_strip_firefly_task(void *pvParameters);
 void led_strip_fire_task(void *pvParameters);
-
-/**
- * @brief Soft candle effect task - gentle candle-like breathing effect
- * @brief Soft light effect task - simple soft warm light
- * @param pvParameters Pointer to led_effect_params_t structure
- */
 void led_strip_soft_light_task(void *pvParameters);
+void led_strip_stars_task(void *pvParameters);
 
 #ifdef __cplusplus
 }

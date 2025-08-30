@@ -15,11 +15,10 @@
 static const char *TAG = "effect_manager";
 // Определение всех доступных эффектов
 static const led_effect_info_t available_effects[] = {
-    {"Power Off", led_strip_power_off_task, ""},
     {"Soft Light", led_strip_soft_light_task, "Soft light effect"},
     {"Fire", led_strip_fire_task, "Fire simulation effect"},
-    {"Diagonal Flow", led_strip_diagonal_flow_task,
-     "Diagonal flowing light effect"},
+    {"Firefly mode", led_strip_firefly_task, "Firefly in the dark"},
+    {"Stars", led_strip_stars_task, "Starlight effect"},
 };
 
 static const int EFFECT_COUNT =

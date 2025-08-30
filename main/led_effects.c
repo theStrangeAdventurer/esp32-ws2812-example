@@ -75,33 +75,7 @@ static void led_strip_hsv2rgb(uint32_t h, uint32_t s, uint32_t v, uint32_t *r,
   }
 }
 
-static float min(float a, float b) { return a < b ? a : b; }
-
-void led_strip_power_off_task(void *pvParameters) {
-
-  led_effect_params_t *params = (led_effect_params_t *)pvParameters;
-
-  while (params->running) {
-    for (int j = 0; j < LED_NUMBERS; j++) {
-      // Отключаем угловые светодиоды
-      params->led_strip_pixels[j * 3 + 0] = 0;
-      params->led_strip_pixels[j * 3 + 1] = 0;
-      params->led_strip_pixels[j * 3 + 2] = 0;
-      continue;
-    }
-    ESP_ERROR_CHECK(rmt_transmit(
-        params->led_chan, params->led_encoder, params->led_strip_pixels,
-        params->pixel_buffer_size, &params->tx_config));
-    ESP_ERROR_CHECK(rmt_tx_wait_all_done(params->led_chan, pdMS_TO_TICKS(100)));
-
-    vTaskDelay(pdMS_TO_TICKS(100));
-  }
-
-  params->task_handle = NULL;
-  vTaskDelete(NULL);
-}
-
-void led_strip_diagonal_flow_task(void *pvParameters) {
+void led_strip_firefly_task(void *pvParameters) {
   led_effect_params_t *params = (led_effect_params_t *)pvParameters;
   uint32_t red, green, blue;
 
@@ -390,6 +364,175 @@ void led_strip_fire_task(void *pvParameters) {
   vTaskDelete(NULL);
 }
 
+void led_strip_stars_task(void *pvParameters) {
+  led_effect_params_t *params = (led_effect_params_t *)pvParameters;
+  uint32_t red, green, blue;
+
+  // Star structure
+  typedef struct {
+    int position;            // LED index
+    float brightness;        // Current brightness (0.0 - 1.0)
+    float target_brightness; // Target brightness
+    float fade_speed;        // How fast it fades
+    bool active;             // Is this star active
+    uint8_t color_type;      // 0=cool white, 1=warm white, 2=blue-white
+    float timer;             // For timing control
+    float next_change;       // When to change state
+  } star_t;
+
+  // Array of stars
+  const int MAX_STARS = LED_NUMBERS / 4; // Up to 25% of LEDs can be stars
+  static star_t stars[LED_NUMBERS / 4];
+
+  // Initialize stars
+  for (int i = 0; i < MAX_STARS; i++) {
+    stars[i].position = esp_random() % LED_NUMBERS;
+    stars[i].brightness = 0.0f;
+    stars[i].target_brightness = 0.0f;
+    stars[i].fade_speed =
+        0.01f + (float)(esp_random() % 30) / 1000.0f; // 0.01-0.04
+    stars[i].active = false;
+    stars[i].color_type = esp_random() % 3;
+    stars[i].timer = 0.0f;
+    stars[i].next_change =
+        (float)(esp_random() % 3000) / 1000.0f; // 0-3 seconds
+  }
+
+  float_t threshold = 0.1f;
+  const float_t target_threshold = 0.95f;
+  const float_t threshold_step = (target_threshold - threshold) / (100 / 5);
+
+  while (params->running) {
+    // Gradually increase corner rounding threshold
+    if (threshold < target_threshold) {
+      threshold += threshold_step;
+      if (threshold > target_threshold) {
+        threshold = target_threshold;
+      }
+    }
+
+    // Update stars
+    for (int i = 0; i < MAX_STARS; i++) {
+      stars[i].timer += 0.05f;
+
+      // Check if it's time to change star state
+      if (stars[i].timer >= stars[i].next_change) {
+        stars[i].timer = 0.0f;
+
+        if (stars[i].active && stars[i].target_brightness > 0.1f) {
+          // Start fading out
+          stars[i].target_brightness = 0.0f;
+          stars[i].next_change =
+              1.0f + (float)(esp_random() % 2000) / 1000.0f; // 1-3s
+        } else if (!stars[i].active || stars[i].target_brightness <= 0.1f) {
+          // Randomly activate star or keep it inactive
+          if (esp_random() % 100 < 15) { // 15% chance to activate
+            stars[i].active = true;
+            stars[i].position = esp_random() % LED_NUMBERS;
+            stars[i].target_brightness =
+                0.3f + (float)(esp_random() % 70) / 100.0f; // 0.3-1.0
+            stars[i].color_type = esp_random() % 3;
+            stars[i].fade_speed =
+                0.008f + (float)(esp_random() % 25) / 1000.0f; // 0.008-0.033
+            stars[i].next_change =
+                2.0f + (float)(esp_random() % 4000) / 1000.0f; // 2-6s
+          } else {
+            stars[i].next_change =
+                0.5f + (float)(esp_random() % 1500) / 1000.0f; // 0.5-2s
+          }
+        }
+      }
+
+      // Update brightness towards target
+      if (stars[i].brightness < stars[i].target_brightness) {
+        stars[i].brightness += stars[i].fade_speed;
+        if (stars[i].brightness > stars[i].target_brightness) {
+          stars[i].brightness = stars[i].target_brightness;
+        }
+      } else if (stars[i].brightness > stars[i].target_brightness) {
+        stars[i].brightness -= stars[i].fade_speed;
+        if (stars[i].brightness < stars[i].target_brightness) {
+          stars[i].brightness = stars[i].target_brightness;
+        }
+      }
+
+      // Deactivate completely faded stars
+      if (stars[i].brightness <= 0.01f) {
+        stars[i].active = false;
+        stars[i].brightness = 0.0f;
+      }
+    }
+
+    // Clear all LEDs to black background
+    for (int i = 0; i < LED_NUMBERS; i++) {
+      params->led_strip_pixels[i * 3 + 0] = 0; // Green
+      params->led_strip_pixels[i * 3 + 1] = 0; // Red
+      params->led_strip_pixels[i * 3 + 2] = 0; // Blue
+    }
+
+    // Render active stars
+    for (int i = 0; i < MAX_STARS; i++) {
+      if (!stars[i].active || stars[i].brightness <= 0.01f) {
+        continue;
+      }
+
+      int pos = stars[i].position;
+
+#if LED_SHOULD_ROUND == 1
+      if (is_corner_led(pos, threshold)) {
+        continue; // Skip corner LEDs
+      }
+#endif
+
+      // Set star color based on type
+      uint8_t base_brightness = (uint8_t)(255 * stars[i].brightness);
+
+      switch (stars[i].color_type) {
+      case 0: // Cool white
+        red = base_brightness;
+        green = base_brightness;
+        blue = (uint8_t)(base_brightness * 1.2f);
+        if (blue > 255)
+          blue = 255;
+        break;
+      case 1: // Warm white
+        red = base_brightness;
+        green = (uint8_t)(base_brightness * 0.8f);
+        blue = (uint8_t)(base_brightness * 0.4f);
+        break;
+      case 2: // Blue-white
+        red = (uint8_t)(base_brightness * 0.8f);
+        green = (uint8_t)(base_brightness * 0.9f);
+        blue = base_brightness;
+        break;
+      default:
+        red = green = blue = base_brightness;
+        break;
+      }
+
+      // Apply global brightness
+      red = (red * params->brightness) / 255;
+      green = (green * params->brightness) / 255;
+      blue = (blue * params->brightness) / 255;
+
+      // Set pixel (GRB format)
+      params->led_strip_pixels[pos * 3 + 0] = green;
+      params->led_strip_pixels[pos * 3 + 1] = red;
+      params->led_strip_pixels[pos * 3 + 2] = blue;
+    }
+
+    // Transmit to LED strip
+    ESP_ERROR_CHECK(rmt_transmit(
+        params->led_chan, params->led_encoder, params->led_strip_pixels,
+        params->pixel_buffer_size, &params->tx_config));
+    ESP_ERROR_CHECK(rmt_tx_wait_all_done(params->led_chan, pdMS_TO_TICKS(100)));
+
+    vTaskDelay(pdMS_TO_TICKS(50)); // 20 FPS for smooth twinkling
+  }
+
+  params->task_handle = NULL;
+  vTaskDelete(NULL);
+}
 void led_strip_soft_light_task(void *pvParameters) {
   led_effect_params_t *params = (led_effect_params_t *)pvParameters;
   uint32_t red, green, blue;
