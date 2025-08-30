@@ -310,11 +310,12 @@ static esp_err_t power_post_handler(httpd_req_t *req) {
     if (cJSON_IsTrue(power)) {
       // Включаем эффекты - устанавливаем флаг running в true
       g_effect_manager->params->running = true;
+      effect_manager_start_current(g_effect_manager);
       ESP_LOGI(TAG, "Effects enabled via web API");
     } else {
       // Выключаем эффекты - останавливаем текущий эффект
-      effect_manager_stop_current(g_effect_manager);
       g_effect_manager->params->running = false;
+      effect_manager_stop_current(g_effect_manager);
       ESP_LOGI(TAG, "Effects disabled via web API");
     }
 
@@ -410,162 +411,6 @@ esp_err_t root_handler(httpd_req_t *req) {
 
   return httpd_resp_send(req, cached_index_html, cached_index_len);
 }
-
-// // Обработчик для главной страницы - простой HTML интерфейс
-// static esp_err_t root_handler(httpd_req_t *req) {
-//   const char *html_page =
-//       "<!DOCTYPE html>"
-//       "<html>"
-//       "<head>"
-//       "<title>LED Strip Controller</title>"
-//       "<meta charset='utf-8'>"
-//       "<meta name='viewport' content='width=device-width, initial-scale=1'>"
-//       "<style>"
-//       "body { font-family: Arial, sans-serif; margin: 20px; background: "
-//       "#f0f0f0; }"
-//       ".container { max-width: 600px; margin: 0 auto; background: white; "
-//       "padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px "
-//       "rgba(0,0,0,0.1); }"
-//       "h1 { color: #333; text-align: center; }"
-//       ".control-group { margin: 20px 0; padding: 15px; background: #f9f9f9; "
-//       "border-radius: 5px; }"
-//       "button { background: #007bff; color: white; border: none; padding:
-//       10px " "20px; margin: 5px; border-radius: 5px; cursor: pointer; }"
-//       "button:hover { background: #0056b3; }"
-//       "button:disabled { background: #ccc; cursor: not-allowed; }"
-//       ".slider { width: 100%; margin: 10px 0; }"
-//       ".status { background: #e9ecef; padding: 15px; border-radius: 5px; "
-//       "margin: 10px 0; }"
-//       ".effect-buttons { display: flex; flex-wrap: wrap; gap: 10px; }"
-//       ".brightness-control { display: flex; align-items: center; gap: 10px;
-//       }"
-//       "</style>"
-//       "</head>"
-//       "<body>"
-//       "<div class='container'>"
-//       "<h1>🌈 LED Strip Controller</h1>"
-//
-//       "<div class='control-group'>"
-//       "<h3>Status</h3>"
-//       "<div id='status' class='status'>Loading...</div>"
-//       "<button onclick='updateStatus()'>Refresh Status</button>"
-//       "</div>"
-//
-//       "<div class='control-group'>"
-//       "<h3>Power Control</h3>"
-//       "<button id='powerOn' onclick='setPower(true)'>Turn On</button>"
-//       "<button id='powerOff' onclick='setPower(false)'>Turn Off</button>"
-//       "</div>"
-//
-//       "<div class='control-group'>"
-//       "<h3>Effects</h3>"
-//       "<div id='effectButtons' class='effect-buttons'>Loading
-//       effects...</div>"
-//       "<br>"
-//       "<button onclick='nextEffect()'>Next Effect</button>"
-//       "</div>"
-//
-//       "<div class='control-group'>"
-//       "<h3>Brightness Control</h3>"
-//       "<div class='brightness-control'>"
-//       "<button onclick='adjustBrightness(-20)'>-</button>"
-//       "<input type='range' id='brightnessSlider' class='slider' min='1' "
-//       "max='255' value='128' onchange='setBrightness(this.value)'>"
-//       "<button onclick='adjustBrightness(20)'>+</button>"
-//       "<span id='brightnessValue'>128</span>"
-//       "</div>"
-//       "</div>"
-//
-//       "</div>"
-//
-//       "<script>"
-//       "let currentStatus = {};"
-//
-//       "async function apiCall(endpoint, method = 'GET', data = null) {"
-//       "  try {"
-//       "    const options = { method, headers: { 'Content-Type': "
-//       "'application/json' } };"
-//       "    if (data) options.body = JSON.stringify(data);"
-//       "    const response = await fetch('/api/' + endpoint, options);"
-//       "    return await response.json();"
-//       "  } catch (error) {"
-//       "    console.error('API call failed:', error);"
-//       "    return { error: error.message };"
-//       "  }"
-//       "}"
-//
-//       "async function updateStatus() {"
-//       "  const status = await apiCall('status');"
-//       "  currentStatus = status;"
-//       "  document.getElementById('status').innerHTML = "
-//       "    `<strong>Current Effect:</strong> ${status.current_effect || "
-//       "'Unknown'}<br>`+"
-//       "    `<strong>Brightness:</strong> ${status.brightness || 0}<br>`+"
-//       "    `<strong>Running:</strong> ${status.is_running ? 'Yes' :
-//       'No'}<br>`+" "    `<strong>Total Effects:</strong>
-//       ${status.total_effects || 0}`;" "  " "  if (status.brightness) {" "
-//       document.getElementById('brightnessSlider').value = "
-//       "status.brightness;"
-//       "    document.getElementById('brightnessValue').textContent = "
-//       "status.brightness;"
-//       "  }"
-//       "  await loadEffects();"
-//       "}"
-//
-//       "async function loadEffects() {"
-//       "  const effects = await apiCall('effects');"
-//       "  const container = document.getElementById('effectButtons');"
-//       "  if (effects.effects) {"
-//       "    container.innerHTML = '';"
-//       "    effects.effects.forEach((effect, index) => {"
-//       "      const button = document.createElement('button');"
-//       "      button.textContent = effect;"
-//       "      button.onclick = () => setEffect(effect);"
-//       "      if (currentStatus.current_effect === effect) {"
-//       "        button.style.background = '#28a745';"
-//       "      }"
-//       "      container.appendChild(button);"
-//       "    });"
-//       "  }"
-//       "}"
-//
-//       "async function setEffect(effectName) {"
-//       "  await apiCall('effect', 'POST', { effect: effectName });"
-//       "  await updateStatus();"
-//       "}"
-//
-//       "async function nextEffect() {"
-//       "  await apiCall('effect/next', 'POST');"
-//       "  await updateStatus();"
-//       "}"
-//
-//       "async function setBrightness(value) {"
-//       "  document.getElementById('brightnessValue').textContent = value;"
-//       "  await apiCall('brightness', 'POST', { brightness: parseInt(value)
-//       });"
-//       "}"
-//
-//       "async function adjustBrightness(delta) {"
-//       "  await apiCall('brightness', 'POST', { delta: delta });"
-//       "  await updateStatus();"
-//       "}"
-//
-//       "async function setPower(state) {"
-//       "  await apiCall('power', 'POST', { power: state });"
-//       "  await updateStatus();"
-//       "}"
-//
-//       "// Initial load"
-//       "updateStatus();"
-//       "setInterval(updateStatus, 5000); // Auto-refresh every 5 seconds"
-//       "</script>"
-//       "</body>"
-//       "</html>";
-//
-//   httpd_resp_set_type(req, "text/html");
-//   httpd_resp_send(req, html_page, strlen(html_page));
-//   return ESP_OK;
-// }
 
 esp_err_t upload_handler(httpd_req_t *req) {
   char *buf = malloc(UPLOAD_BUFFER_SIZE);

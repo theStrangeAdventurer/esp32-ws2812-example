@@ -94,17 +94,12 @@ void app_main(void) {
   ESP_LOGI(TAG, "Initialize effect manager");
   ESP_ERROR_CHECK(effect_manager_init(&effect_manager, params));
 
-  // Запуск обработчика кнопки
-  ESP_LOGI(TAG, "Start button handler");
-  ESP_ERROR_CHECK(effect_manager_start_button_handler(&effect_manager,
-                                                      CONTROL_BUTTON_GPIO_NUM));
-  ESP_LOGI(TAG, "Start button [secondary] handler");
-  ESP_ERROR_CHECK(effect_manager_start_button_secondary_handler(
-      &effect_manager, CONTROL_BUTTON_SECONDARY_GPIO_NUM));
-  // Запуск обработчика кнопки яркости
-  ESP_LOGI(TAG, "Start rotate encoder handler");
-  ESP_ERROR_CHECK(effect_manager_rotate_encoder_handler(
-      &effect_manager, CONTROL_CLK_GPIO_NUM, CONTROL_DT_GPIO_NUM));
+  // Запуск обработчиков физических элементов управления
+  ESP_LOGI(TAG, "Start physical controls handlers");
+  ESP_ERROR_CHECK(effect_manager_start_physical_controls_handler(
+      &effect_manager, CONTROL_BUTTON_GPIO_NUM,
+      CONTROL_BUTTON_SECONDARY_GPIO_NUM, CONTROL_CLK_GPIO_NUM,
+      CONTROL_DT_GPIO_NUM));
 
   // Initialize SPIFFS
   ESP_LOGI(TAG, "Initializing SPIFFS...");

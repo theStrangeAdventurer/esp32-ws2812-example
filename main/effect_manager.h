@@ -99,6 +99,10 @@ esp_err_t effect_manager_start_button_handler(effect_manager_t *manager,
 esp_err_t effect_manager_rotate_encoder_handler(effect_manager_t *manager,
                                                 int clk_gpio, int dt_gpio);
 
+esp_err_t effect_manager_start_physical_controls_handler(
+    effect_manager_t *manager, int button_gpio, int secondary_button_gpio,
+    int clk_gpio, int dt_gpio);
+
 /**
  * @brief Stop current effect
  * @param manager Pointer to effect manager

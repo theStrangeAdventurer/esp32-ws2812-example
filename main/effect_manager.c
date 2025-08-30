@@ -396,6 +396,37 @@ esp_err_t effect_manager_start_button_handler(effect_manager_t *manager,
   }
 }
 
+esp_err_t effect_manager_start_physical_controls_handler(
+    effect_manager_t *manager, int button_gpio, int secondary_button_gpio,
+    int clk_gpio, int dt_gpio) {
+  ESP_LOGI(TAG, "Starting physical controls handlers");
+
+  // Запуск обработчика основной кнопки
+  esp_err_t ret = effect_manager_start_button_handler(manager, button_gpio);
+  if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to start button handler");
+    return ret;
+  }
+
+  // Запуск обработчика второй кнопки
+  ret = effect_manager_start_button_secondary_handler(manager,
+                                                      secondary_button_gpio);
+  if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to start secondary button handler");
+    return ret;
+  }
+
+  // Запуск обработчика энкодера
+  ret = effect_manager_rotate_encoder_handler(manager, clk_gpio, dt_gpio);
+  if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to start rotate encoder handler");
+    return ret;
+  }
+
+  ESP_LOGI(TAG, "All physical controls handlers started successfully");
+  return ESP_OK;
+}
+
 const char *effect_manager_get_current_name(effect_manager_t *manager) {
   if (!manager || manager->current_effect < 0 ||
       manager->current_effect >= manager->effect_count) {
