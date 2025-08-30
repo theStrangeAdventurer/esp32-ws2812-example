@@ -19,7 +19,8 @@
   10000000 // 10MHz resolution, 1 tick = 0.1us (led strip needs a high
            // resolution)
 #define RMT_LED_STRIP_GPIO_NUM 5
-#define CONTROL_BUTTON_GPIO_NUM 2 // SW on Rotate endecoder
+#define CONTROL_BUTTON_GPIO_NUM 2           // SW on Rotate endecoder
+#define CONTROL_BUTTON_SECONDARY_GPIO_NUM 6 // SW on Rotate endecoder
 #define CONTROL_CLK_GPIO_NUM 0
 #define CONTROL_DT_GPIO_NUM 1
 #define WIFI_SESSID "MGTS_GPON_2950"
@@ -85,6 +86,7 @@ void app_main(void) {
                             .tx_config = tx_config,
                             .running = true,
                             .task_handle = NULL,
+                            .last_task_handle = NULL,
                             .led_strip_pixels = led_strip_pixels,
                             .pixel_buffer_size = sizeof(led_strip_pixels)};
 
@@ -96,6 +98,9 @@ void app_main(void) {
   ESP_LOGI(TAG, "Start button handler");
   ESP_ERROR_CHECK(effect_manager_start_button_handler(&effect_manager,
                                                       CONTROL_BUTTON_GPIO_NUM));
+  ESP_LOGI(TAG, "Start button [secondary] handler");
+  ESP_ERROR_CHECK(effect_manager_start_button_secondary_handler(
+      &effect_manager, CONTROL_BUTTON_SECONDARY_GPIO_NUM));
   // Запуск обработчика кнопки яркости
   ESP_LOGI(TAG, "Start rotate encoder handler");
   ESP_ERROR_CHECK(effect_manager_rotate_encoder_handler(

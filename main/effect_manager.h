@@ -25,6 +25,12 @@ typedef struct {
   const char *description;
 } led_effect_info_t;
 
+// Параметры для задачи обработки secondary кнопки
+typedef struct {
+  struct effect_manager_s *manager; // Forward declaration
+  int button_secondary_gpio;
+} button_secondary_params_t;
+
 // Параметры для задачи обработки кнопки
 typedef struct {
   struct effect_manager_s *manager; // Forward declaration
@@ -45,7 +51,9 @@ typedef struct effect_manager_s {
   int effect_count;
   int current_effect;
   TaskHandle_t button_task_handle;
+  TaskHandle_t button_secondary_task_handle;
   button_params_t *button_params;
+  button_secondary_params_t *button_secondary_params;
   TaskHandle_t rotate_encoder_task_handle;
   rotate_encoder_params_t *rotate_encoder_params_t;
 } effect_manager_t;
@@ -82,12 +90,9 @@ esp_err_t effect_manager_switch_next(effect_manager_t *manager);
  */
 esp_err_t effect_manager_switch_to(effect_manager_t *manager, int effect_index);
 
-/**
- * @brief Start button handler task
- * @param manager Pointer to effect manager
- * @param button_gpio GPIO number for button
- * @return ESP_OK on success
- */
+esp_err_t
+effect_manager_start_button_secondary_handler(effect_manager_t *manager,
+                                              int button_gpio);
 esp_err_t effect_manager_start_button_handler(effect_manager_t *manager,
                                               int button_gpio);
 
@@ -99,6 +104,7 @@ esp_err_t effect_manager_rotate_encoder_handler(effect_manager_t *manager,
  * @param manager Pointer to effect manager
  */
 void effect_manager_stop_current(effect_manager_t *manager);
+esp_err_t effect_manager_start_current(effect_manager_t *manager);
 
 /**
  * @brief Get current effect name

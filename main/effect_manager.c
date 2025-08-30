@@ -25,6 +25,39 @@ static const int EFFECT_COUNT =
     sizeof(available_effects) / sizeof(available_effects[0]);
 
 // Обработка кнопки с debouncing
+static void button_secondary_task(void *arg) {
+  button_secondary_params_t *params = (button_secondary_params_t *)arg;
+  effect_manager_t *manager = params->manager;
+  int button_gpio = params->button_secondary_gpio;
+
+  bool last_state = true; // Pull-up, поэтому HIGH = не нажата
+  TickType_t last_change = 0;
+  const TickType_t debounce_time = pdMS_TO_TICKS(50);
+
+  ESP_LOGI(TAG, "Button [secondary] handler started on GPIO %d", button_gpio);
+
+  while (true) {
+    bool current_state = gpio_get_level(button_gpio);
+
+    if (current_state != last_state) {
+      TickType_t now = xTaskGetTickCount();
+      if ((now - last_change) > debounce_time) {
+        if (current_state == false) { // Кнопка нажата (LOW)
+          ESP_LOGI(TAG, "Button [secondary] pressed, toggle");
+          if (manager->params->running) {
+            effect_manager_stop_current(manager);
+          } else {
+            effect_manager_start_current(manager);
+          }
+        }
+        last_change = now;
+      }
+      last_state = current_state;
+    }
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
+}
+// Обработка кнопки с debouncing
 static void button_task(void *arg) {
   button_params_t *params = (button_params_t *)arg;
   effect_manager_t *manager = params->manager;
@@ -167,7 +200,7 @@ esp_err_t effect_manager_init(effect_manager_t *manager,
   manager->params = params;
   manager->effects = available_effects;
   manager->effect_count = EFFECT_COUNT;
-  manager->current_effect = 0; // Power Off
+  manager->current_effect = 0;
   manager->button_task_handle = NULL;
   manager->button_params = NULL;
   manager->rotate_encoder_params_t = NULL;
@@ -187,7 +220,6 @@ void effect_manager_stop_current(effect_manager_t *manager) {
   if (!manager || !manager->params) {
     return;
   }
-
   if (manager->params->task_handle) {
     ESP_LOGI(TAG, "Stopping current effect: %s",
              manager->effects[manager->current_effect].name);
@@ -208,6 +240,37 @@ void effect_manager_stop_current(effect_manager_t *manager) {
     ESP_LOGW(TAG, "Force deleting task");
     vTaskDelete(manager->params->task_handle);
     manager->params->task_handle = NULL;
+  }
+}
+
+esp_err_t effect_manager_start_current(effect_manager_t *manager) {
+  if (!manager || manager->current_effect < 0) {
+    ESP_LOGE(TAG, "Don't have current_effect to switch");
+    return ESP_ERR_INVALID_ARG;
+  }
+
+  // Убеждаемся, что текущий эффект остановлен
+  if (manager->params->task_handle != NULL) {
+    ESP_LOGI(TAG, "Stopping current task before starting");
+    effect_manager_stop_current(manager);
+  }
+
+  // Устанавливаем флаг запуска
+  manager->params->running = true;
+
+  const led_effect_info_t *effect = &manager->effects[manager->current_effect];
+
+  BaseType_t result =
+      xTaskCreate(effect->func, "led_effect", 4096, manager->params, 5,
+                  &manager->params->task_handle);
+
+  if (result == pdPASS) {
+    ESP_LOGI(TAG, "Started effect [%d]: %s", manager->current_effect,
+             effect->name);
+    return ESP_OK;
+  } else {
+    ESP_LOGE(TAG, "Failed to create task for effect: %s", effect->name);
+    return ESP_FAIL;
   }
 }
 
@@ -250,6 +313,48 @@ esp_err_t effect_manager_switch_next(effect_manager_t *manager) {
   return effect_manager_switch_to(manager, next_effect);
 }
 
+esp_err_t
+effect_manager_start_button_secondary_handler(effect_manager_t *manager,
+                                              int button_gpio) {
+  if (!manager) {
+    ESP_LOGE(TAG, "Invalid manager");
+    return ESP_ERR_INVALID_ARG;
+  }
+
+  // Настройка GPIO для кнопки
+  gpio_config_t io_conf = {.pin_bit_mask = (1ULL << button_gpio),
+                           .mode = GPIO_MODE_INPUT,
+                           .pull_up_en = GPIO_PULLUP_ENABLE,
+                           .pull_down_en = GPIO_PULLDOWN_DISABLE,
+                           .intr_type = GPIO_INTR_DISABLE};
+  ESP_ERROR_CHECK(gpio_config(&io_conf));
+
+  // Выделить память для параметров задачи
+  button_secondary_params_t *params = malloc(sizeof(button_secondary_params_t));
+  if (!params) {
+    ESP_LOGE(TAG, "Failed to allocate memory for button task params");
+    return ESP_ERR_NO_MEM;
+  }
+
+  params->manager = manager;
+  params->button_secondary_gpio = button_gpio;
+
+  // Создать задачу обработки кнопки
+  BaseType_t result =
+      xTaskCreate(button_secondary_task, "button_secondary_handler", 2048,
+                  params, 4, &manager->button_secondary_task_handle);
+
+  if (result == pdPASS) {
+    // Сохранить указатель на параметры для последующей очистки
+    manager->button_secondary_params = params;
+    ESP_LOGI(TAG, "Button [secondary] handler started on GPIO %d", button_gpio);
+    return ESP_OK;
+  } else {
+    ESP_LOGE(TAG, "Failed to create button [secondary] handler task");
+    free(params);
+    return ESP_FAIL;
+  }
+}
 esp_err_t effect_manager_start_button_handler(effect_manager_t *manager,
                                               int button_gpio) {
   if (!manager) {
@@ -412,6 +517,13 @@ void effect_manager_cleanup(effect_manager_t *manager) {
     ESP_LOGI(TAG, "Stopping brightness button handler task");
     vTaskDelete(manager->rotate_encoder_task_handle);
     manager->rotate_encoder_task_handle = NULL;
+  }
+
+  // Освободить память параметров кнопки [secondary]
+  if (manager->button_secondary_params) {
+    ESP_LOGI(TAG, "Freeing button task parameters");
+    free(manager->button_params);
+    manager->button_secondary_params = NULL;
   }
 
   // Освободить память параметров кнопки

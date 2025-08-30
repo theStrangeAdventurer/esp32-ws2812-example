@@ -29,6 +29,22 @@ static bool is_corner_led(int led_index, float threshold) {
 }
 #endif
 
+// Utility function to clear LED matrix
+static void clear_led_matrix(led_effect_params_t *params) {
+  // Clear all pixels to black
+  for (int i = 0; i < LED_NUMBERS; i++) {
+    params->led_strip_pixels[i * 3 + 0] = 0; // Green
+    params->led_strip_pixels[i * 3 + 1] = 0; // Red
+    params->led_strip_pixels[i * 3 + 2] = 0; // Blue
+  }
+
+  // Send cleared data to LED strip
+  ESP_ERROR_CHECK(rmt_transmit(params->led_chan, params->led_encoder,
+                               params->led_strip_pixels,
+                               params->pixel_buffer_size, &params->tx_config));
+  ESP_ERROR_CHECK(rmt_tx_wait_all_done(params->led_chan, pdMS_TO_TICKS(100)));
+}
+
 static void led_strip_hsv2rgb(uint32_t h, uint32_t s, uint32_t v, uint32_t *r,
                               uint32_t *g, uint32_t *b) {
   h %= 360; // h -> [0,360]
@@ -247,6 +263,10 @@ void led_strip_firefly_task(void *pvParameters) {
     vTaskDelay(pdMS_TO_TICKS(45));
   }
 
+  // Clear LED matrix before task termination
+  clear_led_matrix(params);
+
+  params->last_task_handle = params->task_handle;
   params->task_handle = NULL;
   vTaskDelete(NULL);
 }
@@ -360,6 +380,10 @@ void led_strip_fire_task(void *pvParameters) {
     vTaskDelay(pdMS_TO_TICKS(40));
   }
 
+  // Clear LED matrix before task termination
+  clear_led_matrix(params);
+
+  params->last_task_handle = params->task_handle;
   params->task_handle = NULL;
   vTaskDelete(NULL);
 }
@@ -530,6 +554,10 @@ void led_strip_stars_task(void *pvParameters) {
     vTaskDelay(pdMS_TO_TICKS(50)); // 20 FPS for smooth twinkling
   }
 
+  // Clear LED matrix before task termination
+  clear_led_matrix(params);
+
+  params->last_task_handle = params->task_handle;
   params->task_handle = NULL;
   vTaskDelete(NULL);
 }
@@ -579,8 +607,12 @@ void led_strip_soft_light_task(void *pvParameters) {
         params->led_chan, params->led_encoder, params->led_strip_pixels,
         params->pixel_buffer_size, &params->tx_config));
     ESP_ERROR_CHECK(rmt_tx_wait_all_done(params->led_chan, pdMS_TO_TICKS(100)));
-    vTaskDelay(pdMS_TO_TICKS(16)); // 60 FPS для стабильного мягкого света
+    vTaskDelay(pdMS_TO_TICKS(30));
   }
+
+  clear_led_matrix(params);
+
+  params->last_task_handle = params->task_handle;
   params->task_handle = NULL;
   vTaskDelete(NULL);
 }

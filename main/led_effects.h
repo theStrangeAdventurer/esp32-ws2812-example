@@ -30,6 +30,7 @@ typedef struct {
   rmt_transmit_config_t tx_config;
   bool running;
   TaskHandle_t task_handle;
+  TaskHandle_t last_task_handle;
   uint8_t *led_strip_pixels; // Pointer to LED pixel buffer
   size_t pixel_buffer_size;  // Size of pixel buffer
   uint8_t brightness;        // Brightness level (1-255)
