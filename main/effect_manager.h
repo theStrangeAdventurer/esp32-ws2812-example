@@ -103,65 +103,24 @@ esp_err_t effect_manager_start_physical_controls_handler(
     effect_manager_t *manager, int button_gpio, int secondary_button_gpio,
     int clk_gpio, int dt_gpio);
 
-/**
- * @brief Stop current effect
- * @param manager Pointer to effect manager
- */
-void effect_manager_stop_current(effect_manager_t *manager);
+esp_err_t effect_manager_stop_current(effect_manager_t *manager);
 esp_err_t effect_manager_start_current(effect_manager_t *manager);
 
-/**
- * @brief Get current effect name
- * @param manager Pointer to effect manager
- * @return Current effect name string
- */
 const char *effect_manager_get_current_name(effect_manager_t *manager);
 
-/**
- * @brief Get current effect index
- * @param manager Pointer to effect manager
- * @return Current effect index
- */
 int effect_manager_get_current_index(effect_manager_t *manager);
 
-/**
- * @brief Get effect status for API
- * @param manager Pointer to effect manager
- * @param status Pointer to status structure to fill
- * @return ESP_OK on success
- */
 esp_err_t effect_manager_get_status(effect_manager_t *manager,
                                     effect_status_t *status);
 
-/**
- * @brief Set effect by name (for API)
- * @param manager Pointer to effect manager
- * @param name Name of effect to activate
- * @return ESP_OK on success
- */
 esp_err_t effect_manager_set_effect_by_name(effect_manager_t *manager,
                                             const char *name);
 
-/**
- * @brief Clean up effect manager and free all resources
- * @param manager Pointer to effect manager
- */
 void effect_manager_cleanup(effect_manager_t *manager);
 
-/**
- * @brief Set brightness for effects
- * @param manager Pointer to effect manager
- * @param brightness Brightness value (1-255)
- * @return ESP_OK on success
- */
 esp_err_t effect_manager_set_brightness(effect_manager_t *manager,
                                         uint8_t brightness);
 
-/**
- * @brief Get current brightness
- * @param manager Pointer to effect manager
- * @return Current brightness value (0 if error)
- */
 uint8_t effect_manager_get_brightness(effect_manager_t *manager);
 
 /**

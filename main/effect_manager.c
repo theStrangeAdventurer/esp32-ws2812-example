@@ -4,6 +4,7 @@
 
 #include "effect_manager.h"
 #include "driver/gpio.h"
+#include "esp_err.h"
 #include "esp_log.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
@@ -30,7 +31,7 @@ static void button_secondary_task(void *arg) {
   effect_manager_t *manager = params->manager;
   int button_gpio = params->button_secondary_gpio;
 
-  bool last_state = true; // Pull-up, поэтому HIGH = не нажата
+  bool last_state = !params->manager->params->running;
   TickType_t last_change = 0;
   const TickType_t debounce_time = pdMS_TO_TICKS(50);
 
@@ -54,7 +55,7 @@ static void button_secondary_task(void *arg) {
       }
       last_state = current_state;
     }
-    vTaskDelay(pdMS_TO_TICKS(10));
+    vTaskDelay(pdMS_TO_TICKS(50));
   }
 }
 // Обработка кнопки с debouncing
@@ -84,7 +85,7 @@ static void button_task(void *arg) {
       last_state = current_state;
     }
 
-    vTaskDelay(pdMS_TO_TICKS(10));
+    vTaskDelay(pdMS_TO_TICKS(50));
   }
 }
 
@@ -140,7 +141,7 @@ static void rotate_encoder_task(void *arg) {
     }
 
     last_clk_state = clk_state;
-    vTaskDelay(pdMS_TO_TICKS(10));
+    vTaskDelay(pdMS_TO_TICKS(50));
   }
 }
 
@@ -216,9 +217,9 @@ esp_err_t effect_manager_init(effect_manager_t *manager,
   return effect_manager_switch_to(manager, manager->current_effect);
 }
 
-void effect_manager_stop_current(effect_manager_t *manager) {
+esp_err_t effect_manager_stop_current(effect_manager_t *manager) {
   if (!manager || !manager->params) {
-    return;
+    return ESP_ERR_INVALID_ARG;
   }
   if (manager->params->task_handle) {
     ESP_LOGI(TAG, "Stopping current effect: %s",
@@ -231,9 +232,9 @@ void effect_manager_stop_current(effect_manager_t *manager) {
     for (int i = 0; i < 20; i++) { // 200ms максимум
       if (manager->params->task_handle == NULL) {
         ESP_LOGI(TAG, "Task finished gracefully");
-        return; // Задача завершилась сама
+        return ESP_OK;
       }
-      vTaskDelay(pdMS_TO_TICKS(10));
+      vTaskDelay(pdMS_TO_TICKS(50));
     }
 
     // Если задача не завершилась сама, принудительно удаляем
@@ -241,6 +242,7 @@ void effect_manager_stop_current(effect_manager_t *manager) {
     vTaskDelete(manager->params->task_handle);
     manager->params->task_handle = NULL;
   }
+  return ESP_OK;
 }
 
 esp_err_t effect_manager_start_current(effect_manager_t *manager) {
@@ -354,6 +356,7 @@ effect_manager_start_button_secondary_handler(effect_manager_t *manager,
     free(params);
     return ESP_FAIL;
   }
+  return ESP_OK;
 }
 esp_err_t effect_manager_start_button_handler(effect_manager_t *manager,
                                               int button_gpio) {
@@ -400,7 +403,6 @@ esp_err_t effect_manager_start_physical_controls_handler(
     effect_manager_t *manager, int button_gpio, int secondary_button_gpio,
     int clk_gpio, int dt_gpio) {
   ESP_LOGI(TAG, "Starting physical controls handlers");
-
   // Запуск обработчика основной кнопки
   esp_err_t ret = effect_manager_start_button_handler(manager, button_gpio);
   if (ret != ESP_OK) {

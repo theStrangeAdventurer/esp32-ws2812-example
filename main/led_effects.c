@@ -567,7 +567,7 @@ void led_strip_soft_light_task(void *pvParameters) {
 
   float_t threshold = 0.1f; // Начальное значение
   const float_t target_threshold = 0.8f;
-  const float_t threshold_step = (target_threshold - threshold) / (100 / 5);
+  const float_t threshold_step = (target_threshold - threshold) / 5; // 5 steps
   while (params->running) {
     if (threshold < target_threshold) {
       threshold += threshold_step;
@@ -607,7 +607,7 @@ void led_strip_soft_light_task(void *pvParameters) {
         params->led_chan, params->led_encoder, params->led_strip_pixels,
         params->pixel_buffer_size, &params->tx_config));
     ESP_ERROR_CHECK(rmt_tx_wait_all_done(params->led_chan, pdMS_TO_TICKS(100)));
-    vTaskDelay(pdMS_TO_TICKS(30));
+    vTaskDelay(pdMS_TO_TICKS(25));
   }
 
   clear_led_matrix(params);
