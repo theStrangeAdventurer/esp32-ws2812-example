@@ -10,7 +10,7 @@
 
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT BIT1
-#define WIFI_MAXIMUM_RETRY 5
+#define WIFI_MAXIMUM_RETRY 3
 
 static const char *TAG = "wifi_manager";
 static EventGroupHandle_t s_wifi_event_group;

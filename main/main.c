@@ -33,6 +33,7 @@ static const char *TAG = "led_strip";
 static uint8_t led_strip_pixels[LED_NUMBERS * 3];
 static effect_manager_t effect_manager;
 
+static TaskHandle_t builtin_led_task_handle = NULL;
 void builtin_led_task(void *pvParameters) {
   while (1) {
     if (!wifi_manager_is_connected()) {
@@ -48,7 +49,6 @@ void builtin_led_task(void *pvParameters) {
     }
   }
 }
-
 esp_err_t led_builtin_start_handler() {
   gpio_config_t io_conf = {.pin_bit_mask = (1ULL << LED_BUILTIN_GPIO_NUM),
                            .mode = GPIO_MODE_OUTPUT,
@@ -58,7 +58,7 @@ esp_err_t led_builtin_start_handler() {
   ESP_ERROR_CHECK(gpio_config(&io_conf));
 
   BaseType_t result = xTaskCreate(builtin_led_task, "builtin_led_task_handler",
-                                  2048, NULL, 4, NULL);
+                                  2048, NULL, 4, &builtin_led_task_handle);
 
   if (result == pdPASS) {
     ESP_LOGI(TAG, "Builtin led handler started on GPIO %d",
@@ -67,6 +67,15 @@ esp_err_t led_builtin_start_handler() {
   } else {
     ESP_LOGE(TAG, "Failed to create builtin led handler task");
     return ESP_FAIL;
+  }
+}
+
+void led_builtin_stop_handler() {
+  if (builtin_led_task_handle != NULL) {
+    vTaskDelete(builtin_led_task_handle);
+    builtin_led_task_handle = NULL;
+    gpio_set_level(LED_BUILTIN_GPIO_NUM, 0); // Ensure LED is off
+    ESP_LOGI(TAG, "Builtin LED task stopped");
   }
 }
 
@@ -87,7 +96,33 @@ void app_main(void) {
 
   // Initialize WiFi
   ESP_LOGI(TAG, "Initializing WiFi...");
-  ESP_ERROR_CHECK(wifi_manager_init_sta(WIFI_SESSID, WIFI_PSWD));
+  esp_err_t wifi_ret = wifi_manager_init_sta(WIFI_SESSID, WIFI_PSWD);
+  if (wifi_ret != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to initialize WiFi: %s", esp_err_to_name(wifi_ret));
+    // Continue without WiFi - device can still work with physical controls
+    ESP_LOGW(TAG, "Continuing without WiFi connection");
+    led_builtin_stop_handler();
+
+    gpio_set_level(LED_BUILTIN_GPIO_NUM,
+                   1); // disable builtin led blinkikn
+
+    vTaskDelay(pdMS_TO_TICKS(200));
+    gpio_set_level(LED_BUILTIN_GPIO_NUM,
+                   0); // disable builtin led blinkikn
+
+    vTaskDelay(pdMS_TO_TICKS(200));
+    gpio_set_level(LED_BUILTIN_GPIO_NUM,
+                   1); // disable builtin led blinkikn
+    vTaskDelay(pdMS_TO_TICKS(200));
+    gpio_set_level(LED_BUILTIN_GPIO_NUM,
+                   0); // disable builtin led blinkikn
+
+  } else {
+    // WiFi подключен успешно - запускаем веб-сервер
+    ESP_LOGI(TAG, "WiFi connected successfully");
+    ESP_LOGI(TAG, "Starting web server...");
+    ESP_ERROR_CHECK(web_server_init(&effect_manager));
+  }
 
   // Initialize SPIFFS
   ESP_LOGI(TAG, "Initializing SPIFFS...");
@@ -148,8 +183,4 @@ void app_main(void) {
       &effect_manager, CONTROL_BUTTON_GPIO_NUM,
       CONTROL_BUTTON_SECONDARY_GPIO_NUM, CONTROL_CLK_GPIO_NUM,
       CONTROL_DT_GPIO_NUM));
-
-  // Запуск веб-сервера
-  ESP_LOGI(TAG, "Starting web server...");
-  ESP_ERROR_CHECK(web_server_init(&effect_manager));
 }
