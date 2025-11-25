@@ -8,6 +8,11 @@
 #include "freertos/task.h"
 #include <string.h>
 
+// For MAC2STR macro
+#include "esp_mac.h"
+// For IP4_ADDR macro
+#include "lwip/ip4_addr.h"
+
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT BIT1
 #define WIFI_MAXIMUM_RETRY 3
@@ -39,7 +44,72 @@ static void event_handler(void *arg, esp_event_base_t event_base,
     s_retry_num = 0;
     s_is_connected = true;
     xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+  } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_AP_STACONNECTED) {
+    wifi_event_ap_staconnected_t *event = (wifi_event_ap_staconnected_t *)event_data;
+    ESP_LOGI(TAG, "Station " MACSTR " connected, AID=%d",
+             MAC2STR(event->mac), event->aid);
+  } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_AP_STADISCONNECTED) {
+    wifi_event_ap_stadisconnected_t *event = (wifi_event_ap_stadisconnected_t *)event_data;
+    ESP_LOGI(TAG, "Station " MACSTR " disconnected, AID=%d",
+             MAC2STR(event->mac), event->aid);
   }
+}
+
+esp_err_t wifi_manager_init_ap(const char *ssid, const char *password,
+                               uint8_t channel, uint8_t max_conn) {
+  // Create default AP network interface
+  esp_netif_t *ap_netif = esp_netif_create_default_wifi_ap();
+  if (!ap_netif) {
+    ESP_LOGE(TAG, "Failed to create AP network interface");
+    return ESP_FAIL;
+  }
+
+  wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+  ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+
+  // Register AP event handlers
+  esp_event_handler_instance_t instance_any_id;
+  ESP_ERROR_CHECK(esp_event_handler_instance_register(
+      WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL, &instance_any_id));
+
+  wifi_config_t wifi_config = {
+      .ap = {
+          .ssid = "",
+          .ssid_len = strlen(ssid),
+          .channel = channel,
+          .password = "",
+          .max_connection = max_conn,
+          .authmode = WIFI_AUTH_WPA2_PSK,
+          .pmf_cfg = {
+              .required = false,
+          },
+      },
+  };
+
+  strncpy((char *)wifi_config.ap.ssid, ssid, sizeof(wifi_config.ap.ssid));
+  if (password && strlen(password) >= 8) {
+    strncpy((char *)wifi_config.ap.password, password,
+            sizeof(wifi_config.ap.password));
+  } else {
+    wifi_config.ap.authmode = WIFI_AUTH_OPEN;
+  }
+
+  ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
+  ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
+  ESP_ERROR_CHECK(esp_wifi_start());
+
+  // Configure AP IP settings (optional but recommended)
+  esp_netif_ip_info_t ip_info;
+  IP4_ADDR(&ip_info.ip, 192, 168, 4, 1);
+  IP4_ADDR(&ip_info.gw, 192, 168, 4, 1);
+  IP4_ADDR(&ip_info.netmask, 255, 255, 255, 0);
+  esp_netif_dhcps_stop(ap_netif);
+  esp_netif_set_ip_info(ap_netif, &ip_info);
+  esp_netif_dhcps_start(ap_netif);
+
+  ESP_LOGI(TAG, "AP started: SSID: %s, Channel: %d, Max connections: %d", 
+           ssid, channel, max_conn);
+  return ESP_OK;
 }
 
 esp_err_t wifi_manager_init_sta(const char *ssid, const char *password) {

@@ -7,6 +7,7 @@
 #include "esp_http_server.h"
 #include "esp_log.h"
 #include "mdns.h"
+#include "nvs.h"
 #include <fcntl.h> // For open() and O_* constants
 #include <stdint.h>
 #include <string.h>
@@ -41,6 +42,77 @@ const char *default_html_response =
     "    <p>please upload the required files first.</p>\n"
     "</body>\n"
     "</html>";
+
+static esp_err_t wifi_config_post_handler(httpd_req_t *req) {
+  char buf[512];
+  int ret = httpd_req_recv(req, buf, sizeof(buf) - 1);
+  if (ret <= 0) {
+    httpd_resp_send_500(req);
+    return ESP_FAIL;
+  }
+  buf[ret] = '\0';
+
+  cJSON *json = cJSON_Parse(buf);
+  if (json == NULL) {
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+    return ESP_FAIL;
+  }
+
+  cJSON *ssid = cJSON_GetObjectItem(json, "ssid");
+  cJSON *password = cJSON_GetObjectItem(json, "password");
+
+  if (!cJSON_IsString(ssid) || ssid->valuestring[0] == '\0') {
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid SSID");
+    cJSON_Delete(json);
+    return ESP_FAIL;
+  }
+
+  // Сохраняем настройки WiFi в NVS
+  nvs_handle_t nvs_handle;
+  esp_err_t err = nvs_open("wifi_config", NVS_READWRITE, &nvs_handle);
+  if (err == ESP_OK) {
+    nvs_set_str(nvs_handle, "ssid", ssid->valuestring);
+    if (cJSON_IsString(password)) {
+      nvs_set_str(nvs_handle, "password", password->valuestring);
+    } else {
+      nvs_set_str(nvs_handle, "password", "");
+    }
+    nvs_commit(nvs_handle);
+    nvs_close(nvs_handle);
+  }
+
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+  cJSON *response = cJSON_CreateObject();
+
+  if (err == ESP_OK) {
+    cJSON_AddStringToObject(response, "status", "success");
+    cJSON_AddStringToObject(response, "message",
+                            "WiFi settings saved. Device will restart.");
+
+    char *response_string = cJSON_Print(response);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, response_string, strlen(response_string));
+    free(response_string);
+
+    // Перезагружаем устройство через 2 секунды
+    vTaskDelay(pdMS_TO_TICKS(2000));
+    esp_restart();
+  } else {
+    cJSON_AddStringToObject(response, "status", "error");
+    cJSON_AddStringToObject(response, "message",
+                            "Failed to save WiFi settings");
+
+    char *response_string = cJSON_Print(response);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, response_string, strlen(response_string));
+    free(response_string);
+  }
+
+  cJSON_Delete(json);
+  return ESP_OK;
+}
 
 static esp_err_t status_get_handler(httpd_req_t *req) {
   if (g_effect_manager == NULL) {
@@ -601,6 +673,12 @@ esp_err_t web_server_init(effect_manager_t *effect_mgr) {
   }
 
   // Регистрация обработчиков API
+  httpd_uri_t wifi_config_uri = {.uri = "/api/wifi/config",
+                                 .method = HTTP_POST,
+                                 .handler = wifi_config_post_handler,
+                                 .user_ctx = NULL};
+  httpd_register_uri_handler(server, &wifi_config_uri);
+
   httpd_uri_t status_uri = {.uri = "/api/status",
                             .method = HTTP_GET,
                             .handler = status_get_handler,

@@ -15,6 +15,12 @@
 #include "web_server.h"
 #include "wifi_manager.h"
 
+// Добавляем константы для AP режима
+#define AP_SSID "LED-Lamp-Config"
+#define AP_PASSWORD "12345678"
+#define AP_CHANNEL 1
+#define MAX_STA_CONN 4
+
 #define RMT_LED_STRIP_RESOLUTION_HZ                                            \
   10000000 // 10MHz resolution, 1 tick = 0.1us (led strip needs a high
            // resolution)
@@ -25,15 +31,25 @@
 #define CONTROL_DT_GPIO_NUM 1
 #define LED_BUILTIN_GPIO_NUM 8
 
-#define WIFI_SESSID "MGTS_GPON_2950"
-#define WIFI_PSWD "4W5VNRHH"
-
 static const char *TAG = "led_strip";
 
 static uint8_t led_strip_pixels[LED_NUMBERS * 3];
 static effect_manager_t effect_manager;
 
 static TaskHandle_t builtin_led_task_handle = NULL;
+
+static char saved_ssid[32] = "test";
+static char saved_password[64] = "test";
+
+void led_builtin_stop_handler() {
+  if (builtin_led_task_handle != NULL) {
+    vTaskDelete(builtin_led_task_handle);
+    builtin_led_task_handle = NULL;
+    gpio_set_level(LED_BUILTIN_GPIO_NUM, 0); // Ensure LED is off
+    ESP_LOGI(TAG, "Builtin LED task stopped");
+  }
+}
+
 void builtin_led_task(void *pvParameters) {
   while (1) {
     if (!wifi_manager_is_connected()) {
@@ -70,15 +86,6 @@ esp_err_t led_builtin_start_handler() {
   }
 }
 
-void led_builtin_stop_handler() {
-  if (builtin_led_task_handle != NULL) {
-    vTaskDelete(builtin_led_task_handle);
-    builtin_led_task_handle = NULL;
-    gpio_set_level(LED_BUILTIN_GPIO_NUM, 0); // Ensure LED is off
-    ESP_LOGI(TAG, "Builtin LED task stopped");
-  }
-}
-
 void app_main(void) {
 
   // Запуск встроенного светодиода
@@ -94,9 +101,20 @@ void app_main(void) {
   }
   ESP_ERROR_CHECK(ret);
 
+  nvs_handle_t nvs_handle;
+  if (nvs_open("wifi_config", NVS_READONLY, &nvs_handle) == ESP_OK) {
+    size_t ssid_len = sizeof(saved_ssid);
+    size_t password_len = sizeof(saved_password);
+    nvs_get_str(nvs_handle, "ssid", saved_ssid, &ssid_len);
+    nvs_get_str(nvs_handle, "password", saved_password, &password_len);
+    ESP_LOGI(TAG, "Using saved WiFi settings: SSID=%s", saved_ssid);
+
+    nvs_close(nvs_handle);
+  }
+
   // Initialize WiFi
   ESP_LOGI(TAG, "Initializing WiFi...");
-  esp_err_t wifi_ret = wifi_manager_init_sta(WIFI_SESSID, WIFI_PSWD);
+  esp_err_t wifi_ret = wifi_manager_init_sta(saved_ssid, saved_password);
   if (wifi_ret != ESP_OK) {
     ESP_LOGE(TAG, "Failed to initialize WiFi: %s", esp_err_to_name(wifi_ret));
     // Continue without WiFi - device can still work with physical controls
@@ -117,10 +135,26 @@ void app_main(void) {
     gpio_set_level(LED_BUILTIN_GPIO_NUM,
                    0); // disable builtin led blinkikn
 
+    // Запускаем точку доступа для настройки WiFi
+    ESP_LOGI(TAG, "Starting Access Point for WiFi configuration");
+    esp_err_t ap_ret =
+        wifi_manager_init_ap(AP_SSID, AP_PASSWORD, AP_CHANNEL, MAX_STA_CONN);
+    if (ap_ret == ESP_OK) {
+      ESP_LOGI(TAG, "AP started: SSID: %s, Password: %s", AP_SSID, AP_PASSWORD);
+      // Даем время AP полностью запуститься
+      vTaskDelay(pdMS_TO_TICKS(2000));
+      // Запускаем веб-сервер в режиме AP для настройки
+      ESP_LOGI(TAG, "Starting web server in AP mode...");
+      ESP_ERROR_CHECK(web_server_init(&effect_manager));
+    } else {
+      ESP_LOGE(TAG, "Failed to start AP mode");
+    }
+
   } else {
     // WiFi подключен успешно - запускаем веб-сервер
     ESP_LOGI(TAG, "WiFi connected successfully");
     ESP_LOGI(TAG, "Starting web server...");
+    led_builtin_stop_handler();
     ESP_ERROR_CHECK(web_server_init(&effect_manager));
   }
 
