@@ -10,6 +10,7 @@
 #include "freertos/task.h"
 #include "led_effects.h"
 #include "led_strip_encoder.h"
+#include "mdns.h"
 #include "nvs_flash.h"
 #include "spiffs_manager.h"
 #include "web_server.h"
@@ -38,8 +39,38 @@ static effect_manager_t effect_manager;
 
 static TaskHandle_t builtin_led_task_handle = NULL;
 
-static char saved_ssid[32] = "test";
-static char saved_password[64] = "test";
+static char saved_ssid[32] = "";
+static char saved_password[64] = "";
+
+#define MDNS_HOSTNAME "lamp-01"
+
+static esp_err_t init_mdns() {
+  esp_err_t err = mdns_init();
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "mDNS Init failed: %s", esp_err_to_name(err));
+    return err;
+  }
+
+  // Установить имя хоста
+  err = mdns_hostname_set(MDNS_HOSTNAME);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "mDNS Set hostname failed: %s", esp_err_to_name(err));
+    return err;
+  }
+
+  // Добавляем сервис для HTTP
+  err = mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "mDNS Add service failed: %s", esp_err_to_name(err));
+    return err;
+  }
+
+  // Добавляем TXT записи для информации
+  mdns_service_instance_name_set("_http", "_tcp", "LED Lamp Web Interface");
+
+  ESP_LOGI(TAG, "mDNS started: http://%s.local", MDNS_HOSTNAME);
+  return ESP_OK;
+}
 
 void led_builtin_stop_handler() {
   if (builtin_led_task_handle != NULL) {
@@ -65,6 +96,7 @@ void builtin_led_task(void *pvParameters) {
     }
   }
 }
+
 esp_err_t led_builtin_start_handler() {
   gpio_config_t io_conf = {.pin_bit_mask = (1ULL << LED_BUILTIN_GPIO_NUM),
                            .mode = GPIO_MODE_OUTPUT,
@@ -101,61 +133,73 @@ void app_main(void) {
   }
   ESP_ERROR_CHECK(ret);
 
+  // mDNS будет инициализирован позже, после WiFi
+
+  // Чтение сохраненных WiFi настроек
+  bool has_saved_wifi = false;
   nvs_handle_t nvs_handle;
+
   if (nvs_open("wifi_config", NVS_READONLY, &nvs_handle) == ESP_OK) {
     size_t ssid_len = sizeof(saved_ssid);
     size_t password_len = sizeof(saved_password);
-    nvs_get_str(nvs_handle, "ssid", saved_ssid, &ssid_len);
-    nvs_get_str(nvs_handle, "password", saved_password, &password_len);
-    ESP_LOGI(TAG, "Using saved WiFi settings: SSID=%s", saved_ssid);
 
+    // Пытаемся прочитать сохраненные настройки
+    if (nvs_get_str(nvs_handle, "ssid", saved_ssid, &ssid_len) == ESP_OK &&
+        nvs_get_str(nvs_handle, "password", saved_password, &password_len) ==
+            ESP_OK) {
+
+      // Проверяем, что SSID не пустой
+      if (strlen(saved_ssid) > 0) {
+        has_saved_wifi = true;
+        ESP_LOGI(TAG, "Found saved WiFi settings: SSID=%s", saved_ssid);
+      }
+    }
     nvs_close(nvs_handle);
   }
 
-  // Initialize WiFi
-  ESP_LOGI(TAG, "Initializing WiFi...");
-  esp_err_t wifi_ret = wifi_manager_init_sta(saved_ssid, saved_password);
-  if (wifi_ret != ESP_OK) {
-    ESP_LOGE(TAG, "Failed to initialize WiFi: %s", esp_err_to_name(wifi_ret));
-    // Continue without WiFi - device can still work with physical controls
-    ESP_LOGW(TAG, "Continuing without WiFi connection");
-    led_builtin_stop_handler();
+  // Инициализация WiFi в нужном режиме
+  esp_err_t wifi_ret = ESP_FAIL;
 
-    gpio_set_level(LED_BUILTIN_GPIO_NUM,
-                   1); // disable builtin led blinkikn
+  if (has_saved_wifi) {
+    ESP_LOGI(TAG, "Attempting to connect to saved WiFi...");
+    wifi_ret = wifi_manager_init_sta(saved_ssid, saved_password);
 
-    vTaskDelay(pdMS_TO_TICKS(200));
-    gpio_set_level(LED_BUILTIN_GPIO_NUM,
-                   0); // disable builtin led blinkikn
-
-    vTaskDelay(pdMS_TO_TICKS(200));
-    gpio_set_level(LED_BUILTIN_GPIO_NUM,
-                   1); // disable builtin led blinkikn
-    vTaskDelay(pdMS_TO_TICKS(200));
-    gpio_set_level(LED_BUILTIN_GPIO_NUM,
-                   0); // disable builtin led blinkikn
-
-    // Запускаем точку доступа для настройки WiFi
-    ESP_LOGI(TAG, "Starting Access Point for WiFi configuration");
-    esp_err_t ap_ret =
-        wifi_manager_init_ap(AP_SSID, AP_PASSWORD, AP_CHANNEL, MAX_STA_CONN);
-    if (ap_ret == ESP_OK) {
-      ESP_LOGI(TAG, "AP started: SSID: %s, Password: %s", AP_SSID, AP_PASSWORD);
-      // Даем время AP полностью запуститься
-      vTaskDelay(pdMS_TO_TICKS(2000));
-      // Запускаем веб-сервер в режиме AP для настройки
-      ESP_LOGI(TAG, "Starting web server in AP mode...");
-      ESP_ERROR_CHECK(web_server_init(&effect_manager));
+    if (wifi_ret == ESP_OK) {
+      ESP_LOGI(TAG, "WiFi connected successfully");
+      led_builtin_stop_handler();              // Останавливаем мигание
+      gpio_set_level(LED_BUILTIN_GPIO_NUM, 0); // Гасим светодиод
     } else {
-      ESP_LOGE(TAG, "Failed to start AP mode");
+      ESP_LOGW(TAG, "Failed to connect to saved WiFi: %s",
+               esp_err_to_name(wifi_ret));
+      // Перезагружаем устройство для чистого запуска в AP режиме
+      ESP_LOGI(TAG, "Restarting device to start in AP mode...");
+      vTaskDelay(pdMS_TO_TICKS(2000));
+      esp_restart();
     }
-
   } else {
-    // WiFi подключен успешно - запускаем веб-сервер
-    ESP_LOGI(TAG, "WiFi connected successfully");
-    ESP_LOGI(TAG, "Starting web server...");
-    led_builtin_stop_handler();
-    ESP_ERROR_CHECK(web_server_init(&effect_manager));
+    // Нет сохраненных настроек - запускаем AP
+    ESP_LOGI(TAG, "Starting Access Point for WiFi configuration");
+    wifi_ret =
+        wifi_manager_init_ap(AP_SSID, AP_PASSWORD, AP_CHANNEL, MAX_STA_CONN);
+
+    if (wifi_ret == ESP_OK) {
+      ESP_LOGI(TAG, "AP started: SSID: %s", AP_SSID);
+      vTaskDelay(pdMS_TO_TICKS(2000)); // Даем время AP запуститься
+    } else {
+      ESP_LOGE(TAG, "Failed to start AP mode: %s", esp_err_to_name(wifi_ret));
+    }
+  }
+
+  // В любом случае запускаем веб-сервер
+  ESP_LOGI(TAG, "Starting web server...");
+  esp_err_t web_ret = web_server_init(&effect_manager);
+  if (web_ret == ESP_OK) {
+    ESP_LOGI(TAG, "Web server started successfully");
+    if (wifi_manager_is_ap_mode()) {
+      ESP_LOGI(TAG, "Access configuration page at: http://192.168.4.1");
+    }
+  } else {
+    ESP_LOGE(TAG, "Failed to start web server: %s", esp_err_to_name(web_ret));
   }
 
   // Initialize SPIFFS
@@ -167,10 +211,9 @@ void app_main(void) {
       .clk_src = RMT_CLK_SRC_DEFAULT, // select source clock
       .gpio_num = RMT_LED_STRIP_GPIO_NUM,
       .mem_block_symbols =
-          64, // increase the block size can make the LED less flickering
+          128, // Увеличиваем размер блока памяти для уменьшения мерцания
       .resolution_hz = RMT_LED_STRIP_RESOLUTION_HZ,
-      .trans_queue_depth = 4, // set the number of transactions that can be
-                              // pending in the background
+      .trans_queue_depth = 8, // Увеличиваем глубину очереди транзакций
   };
   ESP_ERROR_CHECK(rmt_new_tx_channel(&tx_chan_config, &led_chan));
 

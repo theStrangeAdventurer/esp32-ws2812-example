@@ -24,6 +24,13 @@ esp_err_t wifi_manager_init_sta(const char *ssid, const char *password);
 bool wifi_manager_is_connected(void);
 
 /**
+ * @brief Check if device is in AP mode
+ *
+ * @return true if in AP mode, false otherwise
+ */
+bool wifi_manager_is_ap_mode(void);
+
+/**
  * @brief Deinitialize WiFi manager
  */
 void wifi_manager_deinit(void);

@@ -3,11 +3,13 @@
  */
 
 #include "led_effects.h"
+#include "esp_log.h"
 #include "esp_random.h"
-#include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <math.h>
 #include <string.h>
+
+static const char *TAG = "led_effects";
 
 #if LED_SHOULD_ROUND == 1
 // Function to check if LED should be disabled for circular rounding
@@ -39,10 +41,18 @@ static void clear_led_matrix(led_effect_params_t *params) {
   }
 
   // Send cleared data to LED strip
-  ESP_ERROR_CHECK(rmt_transmit(params->led_chan, params->led_encoder,
+  esp_err_t ret = rmt_transmit(params->led_chan, params->led_encoder,
                                params->led_strip_pixels,
-                               params->pixel_buffer_size, &params->tx_config));
-  ESP_ERROR_CHECK(rmt_tx_wait_all_done(params->led_chan, pdMS_TO_TICKS(100)));
+                               params->pixel_buffer_size, &params->tx_config);
+  if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "RMT transmit failed in clear_led_matrix: %s", esp_err_to_name(ret));
+    return;
+  }
+  
+  ret = rmt_tx_wait_all_done(params->led_chan, pdMS_TO_TICKS(500));
+  if (ret != ESP_OK) {
+    ESP_LOGW(TAG, "RMT wait timeout in clear_led_matrix: %s", esp_err_to_name(ret));
+  }
 }
 
 static void led_strip_hsv2rgb(uint32_t h, uint32_t s, uint32_t v, uint32_t *r,
@@ -254,10 +264,21 @@ void led_strip_firefly_task(void *pvParameters) {
       params->led_strip_pixels[j * 3 + 2] = blue;
     }
 
-    ESP_ERROR_CHECK(rmt_transmit(
+    esp_err_t ret = rmt_transmit(
         params->led_chan, params->led_encoder, params->led_strip_pixels,
-        params->pixel_buffer_size, &params->tx_config));
-    ESP_ERROR_CHECK(rmt_tx_wait_all_done(params->led_chan, pdMS_TO_TICKS(100)));
+        params->pixel_buffer_size, &params->tx_config);
+    if (ret != ESP_OK) {
+      ESP_LOGE(TAG, "RMT transmit failed: %s", esp_err_to_name(ret));
+      vTaskDelay(pdMS_TO_TICKS(10));
+      continue;
+    }
+    
+    // Увеличиваем таймаут ожидания до 500ms
+    ret = rmt_tx_wait_all_done(params->led_chan, pdMS_TO_TICKS(500));
+    if (ret != ESP_OK) {
+      ESP_LOGW(TAG, "RMT wait timeout: %s, continuing anyway", esp_err_to_name(ret));
+      // Продолжаем выполнение даже при таймауте
+    }
 
     // Уменьшаем задержку для увеличения FPS
     vTaskDelay(pdMS_TO_TICKS(45));
@@ -372,10 +393,19 @@ void led_strip_fire_task(void *pvParameters) {
     }
 
     // Send to LEDs
-    ESP_ERROR_CHECK(rmt_transmit(
+    esp_err_t ret = rmt_transmit(
         params->led_chan, params->led_encoder, params->led_strip_pixels,
-        params->pixel_buffer_size, &params->tx_config));
-    ESP_ERROR_CHECK(rmt_tx_wait_all_done(params->led_chan, pdMS_TO_TICKS(100)));
+        params->pixel_buffer_size, &params->tx_config);
+    if (ret != ESP_OK) {
+      ESP_LOGE(TAG, "RMT transmit failed: %s", esp_err_to_name(ret));
+      vTaskDelay(pdMS_TO_TICKS(10));
+      continue;
+    }
+    
+    ret = rmt_tx_wait_all_done(params->led_chan, pdMS_TO_TICKS(500));
+    if (ret != ESP_OK) {
+      ESP_LOGW(TAG, "RMT wait timeout: %s, continuing anyway", esp_err_to_name(ret));
+    }
 
     vTaskDelay(pdMS_TO_TICKS(40));
   }

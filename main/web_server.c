@@ -8,6 +8,7 @@
 #include "esp_log.h"
 #include "mdns.h"
 #include "nvs.h"
+#include "wifi_manager.h"
 #include <fcntl.h> // For open() and O_* constants
 #include <stdint.h>
 #include <string.h>
@@ -42,6 +43,131 @@ const char *default_html_response =
     "    <p>please upload the required files first.</p>\n"
     "</body>\n"
     "</html>";
+
+// HTTP обработчик для страницы настройки WiFi
+static esp_err_t wifi_config_page_handler(httpd_req_t *req) {
+  ESP_LOGI(TAG, "WiFi config page handler called");
+  const char *html_response =
+      "<!DOCTYPE html>\n"
+      "<html lang=\"ru\">\n"
+      "<head>\n"
+      "    <meta charset=\"UTF-8\">\n"
+      "    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n"
+      "    <title>Настройка WiFi - LED Лампа</title>\n"
+      "    <style>\n"
+      "        * { margin: 0; padding: 0; box-sizing: border-box; }\n"
+      "        body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }\n"
+      "        .container { background: white; border-radius: 15px; box-shadow: 0 20px 40px rgba(0,0,0,0.1); padding: 40px; max-width: 500px; width: 100%; }\n"
+      "        .header { text-align: center; margin-bottom: 30px; }\n"
+      "        .header h1 { color: #333; margin-bottom: 10px; font-size: 28px; }\n"
+      "        .header p { color: #666; font-size: 16px; line-height: 1.5; }\n"
+      "        .form-group { margin-bottom: 20px; }\n"
+      "        label { display: block; margin-bottom: 8px; color: #333; font-weight: 600; }\n"
+      "        input[type=\"text\"], input[type=\"password\"] { width: 100%; padding: 12px 15px; border: 2px solid #e1e5e9; border-radius: 8px; font-size: 16px; transition: border-color 0.3s; }\n"
+      "        input:focus { outline: none; border-color: #667eea; }\n"
+      "        .btn { width: 100%; padding: 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; transition: transform 0.2s; }\n"
+      "        .btn:hover { transform: translateY(-2px); }\n"
+      "        .status { margin-top: 20px; padding: 15px; border-radius: 8px; text-align: center; font-weight: 600; display: none; }\n"
+      "        .status.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }\n"
+      "        .status.error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }\n"
+      "        .info-box { background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 15px; margin-bottom: 20px; }\n"
+      "        .device-info { background: #e7f3ff; border: 1px solid #b3d9ff; border-radius: 8px; padding: 15px; margin-bottom: 20px; }\n"
+      "    </style>\n"
+      "</head>\n"
+      "<body>\n"
+      "    <div class=\"container\">\n"
+      "        <div class=\"header\">\n"
+      "            <h1>⚡ Настройка WiFi</h1>\n"
+      "            <p>Подключите вашу LED лампу к WiFi сети</p>\n"
+      "        </div>\n"
+      "        \n"
+      "        <div class=\"device-info\">\n"
+      "            <h3>📱 Информация об устройстве</h3>\n"
+      "            <p><strong>Текущий режим:</strong> Точка доступа</p>\n"
+      "            <p><strong>IP адрес:</strong> 192.168.4.1</p>\n"
+      "            <p><strong>Доступ по:</strong> http://lamp-01.local или http://192.168.4.1</p>\n"
+      "        </div>\n"
+      "        \n"
+      "        <div class=\"info-box\">\n"
+      "            <h3>ℹ️ Инструкция</h3>\n"
+      "            <p>Введите данные вашей WiFi сети. После сохранения устройство перезагрузится и попытается подключиться к указанной сети.</p>\n"
+      "        </div>\n"
+      "        \n"
+      "        <form id=\"wifi-config-form\">\n"
+      "            <div class=\"form-group\">\n"
+      "                <label for=\"ssid\">Имя WiFi сети (SSID):</label>\n"
+      "                <input type=\"text\" id=\"ssid\" name=\"ssid\" required placeholder=\"Введите имя вашей WiFi сети\">\n"
+      "            </div>\n"
+      "            \n"
+      "            <div class=\"form-group\">\n"
+      "                <label for=\"password\">Пароль WiFi:</label>\n"
+      "                <input type=\"password\" id=\"password\" name=\"password\" placeholder=\"Введите пароль (если есть)\">\n"
+      "            </div>\n"
+      "            \n"
+      "            <button type=\"submit\" class=\"btn\">💾 Сохранить настройки</button>\n"
+      "        </form>\n"
+      "        \n"
+      "        <div id=\"status\" class=\"status\"></div>\n"
+      "    </div>\n"
+      "\n"
+      "    <script>\n"
+      "        document.getElementById('wifi-config-form').addEventListener('submit', function(e) {\n"
+      "            e.preventDefault();\n"
+      "            \n"
+      "            const ssid = document.getElementById('ssid').value.trim();\n"
+      "            const password = document.getElementById('password').value;\n"
+      "            \n"
+      "            if (!ssid) {\n"
+      "                showStatus('Пожалуйста, введите имя WiFi сети', 'error');\n"
+      "                return;\n"
+      "            }\n"
+      "            \n"
+      "            const status = document.getElementById('status');\n"
+      "            status.style.display = 'block';\n"
+      "            status.className = 'status';\n"
+      "            status.textContent = 'Сохраняем настройки...';\n"
+      "            \n"
+      "            fetch('/api/wifi/config', {\n"
+      "                method: 'POST',\n"
+      "                headers: {\n"
+      "                    'Content-Type': 'application/json',\n"
+      "                },\n"
+      "                body: JSON.stringify({\n"
+      "                    ssid: ssid,\n"
+      "                    password: password\n"
+      "                })\n"
+      "            })\n"
+      "            .then(response => response.json())\n"
+      "            .then(data => {\n"
+      "                if (data.status === 'success') {\n"
+      "                    showStatus(data.message + ' Устройство перезагрузится через 2 секунды...', 'success');\n"
+      "                    setTimeout(() => {\n"
+      "                        showStatus('Перезагрузка...', 'success');\n"
+      "                    }, 2000);\n"
+      "                } else {\n"
+      "                    showStatus(data.message || 'Ошибка при сохранении настроек', 'error');\n"
+      "                }\n"
+      "            })\n"
+      "            .catch(error => {\n"
+      "                console.error('Error:', error);\n"
+      "                showStatus('Ошибка сети. Проверьте подключение.', 'error');\n"
+      "            });\n"
+      "        });\n"
+      "        \n"
+      "        function showStatus(message, type) {\n"
+      "            const status = document.getElementById('status');\n"
+      "            status.style.display = 'block';\n"
+      "            status.className = `status ${type}`;\n"
+      "            status.textContent = message;\n"
+      "        }\n"
+      "    </script>\n"
+      "</body>\n"
+      "</html>";
+
+  httpd_resp_set_type(req, "text/html");
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+  return httpd_resp_send(req, html_response, strlen(html_response));
+}
 
 static esp_err_t wifi_config_post_handler(httpd_req_t *req) {
   char buf[512];
@@ -467,7 +593,18 @@ int check_webapp_uploaded() {
 }
 
 esp_err_t root_handler(httpd_req_t *req) {
+  ESP_LOGI(TAG, "Root handler called, URI: %s", req->uri);
+  
+  // В AP режиме всегда показываем страницу настройки WiFi
+  if (wifi_manager_is_ap_mode()) {
+    ESP_LOGI(TAG, "AP mode detected, showing WiFi config page");
+    return wifi_config_page_handler(req);
+  } else {
+    ESP_LOGI(TAG, "STA mode detected, checking for web application");
+  }
+
   const int is_webapp_uploaded = check_webapp_uploaded();
+  
   if (!is_webapp_uploaded) {
     ESP_LOGW(TAG, "Web application not yet uploaded");
     return httpd_resp_send(req, default_html_response,
@@ -645,9 +782,6 @@ esp_err_t init_mdns() {
 }
 
 esp_err_t web_server_init(effect_manager_t *effect_mgr) {
-  // Initialize mDNS (after all other components)
-  ESP_LOGI(TAG, "Initializing mDNS...");
-  init_mdns();
 
   if (effect_mgr == NULL) {
     ESP_LOGE(TAG, "Effect manager is NULL");
@@ -661,6 +795,15 @@ esp_err_t web_server_init(effect_manager_t *effect_mgr) {
 
   g_effect_manager = effect_mgr;
 
+  // Initialize mDNS after WiFi is ready
+  ESP_LOGI(TAG, "Initializing mDNS...");
+  esp_err_t mdns_ret = init_mdns();
+  if (mdns_ret != ESP_OK) {
+    ESP_LOGW(TAG, "mDNS initialization failed, continuing without mDNS");
+  } else {
+    ESP_LOGI(TAG, "mDNS initialized successfully");
+  }
+
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
   config.server_port = server_port;
   config.max_uri_handlers = 20;
@@ -671,8 +814,29 @@ esp_err_t web_server_init(effect_manager_t *effect_mgr) {
     ESP_LOGE(TAG, "Error starting HTTP server: %s", esp_err_to_name(ret));
     return ret;
   }
+  
+  ESP_LOGI(TAG, "HTTP server successfully started on port %d", server_port);
+
+  // Log network information
+  esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
+  if (netif) {
+    esp_netif_ip_info_t ip_info;
+    if (esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
+      ESP_LOGI(TAG, "AP IP Address: " IPSTR, IP2STR(&ip_info.ip));
+      ESP_LOGI(TAG, "AP Gateway: " IPSTR, IP2STR(&ip_info.gw));
+      ESP_LOGI(TAG, "AP Netmask: " IPSTR, IP2STR(&ip_info.netmask));
+    }
+  } else {
+    ESP_LOGW(TAG, "Could not get AP network interface");
+  }
 
   // Регистрация обработчиков API
+  httpd_uri_t wifi_config_page_uri = {.uri = "/wifi-config",
+                                      .method = HTTP_GET,
+                                      .handler = wifi_config_page_handler,
+                                      .user_ctx = NULL};
+  httpd_register_uri_handler(server, &wifi_config_page_uri);
+
   httpd_uri_t wifi_config_uri = {.uri = "/api/wifi/config",
                                  .method = HTTP_POST,
                                  .handler = wifi_config_post_handler,
@@ -735,6 +899,8 @@ esp_err_t web_server_init(effect_manager_t *effect_mgr) {
                           .handler = root_handler,
                           .user_ctx = NULL};
   httpd_register_uri_handler(server, &root_uri);
+
+
 
   ESP_LOGI(TAG, "HTTP server started on port %d", server_port);
   ESP_LOGI(TAG, "Web interface available at: http://[IP_ADDRESS]/");

@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
+    "deploy": "curl -X POST -F \"file=@dist/index.html\" http://lamp-01.local/upload",
     "build": "rollup -c",
     "postbuild": "node build-single-file.js"
   },

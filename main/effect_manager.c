@@ -255,6 +255,8 @@ esp_err_t effect_manager_start_current(effect_manager_t *manager) {
   if (manager->params->task_handle != NULL) {
     ESP_LOGI(TAG, "Stopping current task before starting");
     effect_manager_stop_current(manager);
+    // Даем время RMT драйверу завершить все операции
+    vTaskDelay(pdMS_TO_TICKS(100));
   }
 
   // Устанавливаем флаг запуска
@@ -285,6 +287,9 @@ esp_err_t effect_manager_switch_to(effect_manager_t *manager,
 
   // Остановить текущий эффект
   effect_manager_stop_current(manager);
+
+  // Даем время RMT драйверу завершить все операции
+  vTaskDelay(pdMS_TO_TICKS(100));
 
   // Сбросить флаг
   manager->params->running = true;
